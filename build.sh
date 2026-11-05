@@ -5,8 +5,7 @@
 # (внутри каталога лежат библиотеки, helper-скрипты и данные).
 #
 # Запуск: ./build.sh
-# Если Nuitka уже установлен системно (Arch: пакет AUR «nuitka», pacman:
-# python-nuitka) — сборка идёт без сети. Иначе Nuitka и patchelf ставятся
+# Если Nuitka уже установлен системно — сборка идёт без сети. Иначе Nuitka и patchelf ставятся
 # pip'ом в .build/venv (при первой сборке нужен интернет).
 set -euo pipefail
 
@@ -33,7 +32,7 @@ pip_install() {
 
 echo "1/4: окружение сборки..."
 if python3 -c "import nuitka" >/dev/null 2>&1; then
-    # Системный Nuitka (AUR «nuitka») — собираем сразу, без venv и сети.
+    # Системный Nuitka — собираем сразу, без venv и сети.
     PY="python3"
     echo "     использую системный nuitka ($(python3 -c 'import nuitka, importlib.metadata as m; print(m.version(\"nuitka\"))' 2>/dev/null || echo '?'))"
 else
@@ -44,22 +43,21 @@ else
     fi
     if ! "$VENV/bin/python" -c "import nuitka" >/dev/null 2>&1; then
         echo "Ошибка: не удалось установить nuitka (нужен интернет," >&2
-        "либо установите его: pacman -S nuitka (AUR) / pip install nuitka)" >&2
+        "либо установите его: pip install nuitka)" >&2
         exit 1
     fi
     PY="$VENV/bin/python"
 fi
 
 # Nuitka ищет patchelf и scons в PATH: сначала свой (venv), затем системный
-# (pacman -S patchelf).
+# (системный patchelf).
 [ -d "$VENV/bin" ] && export PATH="$VENV/bin:$PATH"
 if ! command -v patchelf >/dev/null 2>&1; then
     echo "     ставлю patchelf через pip (нужен для standalone-режима)..."
     pip_install patchelf
 fi
 if ! command -v patchelf >/dev/null 2>&1; then
-    echo "Ошибка: patchelf не найден (pip install patchelf" >&2
-    "либо pacman -S patchelf)" >&2
+    echo "Ошибка: patchelf не найден (pip install patchelf)" >&2
     exit 1
 fi
 

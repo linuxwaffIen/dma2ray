@@ -76,15 +76,6 @@ sudo dnf install python3 python3-gobject gtk4 libadwaita \
     libayatana-appindicator gtk3
 ```
 
-**Arch Linux / Arch Linux ARM:**
-
-```bash
-sudo pacman -S --needed \
-    python python-gobject gtk4 libadwaita \
-    polkit polkit-gnome xdg-utils hicolor-icon-theme \
-    libayatana-appindicator gtk3
-```
-
 Для показа окна авторизации polkit в XFCE/OpenRC установите и запустите
 агент, например `polkit-gnome`, либо используйте агент вашего рабочего стола.
 Сам демон polkit (`polkitd`) должен быть запущен.
@@ -138,47 +129,6 @@ dma2ray
 Профили, настройки и скачанное ядро **не** входят в системную установку —
 они всегда хранятся в домашнем каталоге пользователя.
 
-## Пакеты для дистрибутивов
-
-### AUR: dma2ray-git (Arch Linux / Arch Linux ARM)
-
-Пакет **dma2ray-git** в `packaging/aur/dma2ray-git/` собирается **на машине
-пользователя** под её архитектуру: Nuitka компилирует бинарник из git-исходников,
-поэтому поддерживаются `x86_64`, `aarch64` и `armv7h` (список расширяется
-в `arch=()` PKGBUILD).
-
-Установка (yay/paru или любой AUR-хелпер):
-
-```bash
-yay -S dma2ray-git
-```
-
-Сборка вручную без хелпера (нужны `base-devel` и `git`; `nuitka` и `patchelf`
-хелпер или pacman подставят из зависимостей):
-
-```bash
-git clone https://github.com/linuxwaffIen/dma2ray
-cd dma2ray/packaging/aur/dma2ray-git
-makepkg -si
-```
-
-Системный `nuitka` из AUR означает, что **на этапе сборки не нужна сеть**:
-`build.sh` обнаруживает компилятор и сразу вызывает его. Если системного
-nuitka нет — скрипт сам ставит его pip'ом в `.build/venv`.
-
-Публикация/обновление пакета в AUR:
-
-```bash
-git clone ssh://aur@aur.archlinux.org/dma2ray-git.git
-cp packaging/aur/dma2ray-git/{PKGBUILD,.SRCINFO} dma2ray-git/
-cd dma2ray-git
-makepkg --printsrcinfo > .SRCINFO   # перегенерировать после правок
-git add PKGBUILD .SRCINFO
-git commit -m "dma2ray-git: 0.2.0"
-git push
-```
-
-Для публикации нужен аккаунт AUR и SSH-ключ, привязанный к нему.
 
 ### Другие дистрибутивы
 
@@ -362,11 +312,6 @@ dma2ray/
   tray_helper.py  отдельный GTK3/AppIndicator процесс
   installer.py    скачивание и проверка Xray
 build.sh          компиляция в единый бинарник (Nuitka)
-packaging/arch/
-  PKGBUILD        пакет Arch Linux / Arch Linux ARM (aarch64)
-  make-dist.sh    сборка исходного тарбола для PKGBUILD
-packaging/aur/dma2ray-git/
-  PKGBUILD        пакет AUR (собирается под архитектуру пользователя)
 install.sh        установка собранного бинарника
 data/             .desktop и SVG-иконка
 tests/            unit-тесты
