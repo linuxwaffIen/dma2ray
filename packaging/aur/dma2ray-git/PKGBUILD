@@ -2,7 +2,7 @@
 #
 # Клиент VLESS Dma2ray, компилируемый в единый бинарник (Nuitka) прямо
 # на машине пользователя — поэтому пакет собирается под любую архитектуру
-# из arch=() (x86_64, aarch64, armv7h): gcc + системный nuitka из AUR.
+# из arch=() (x86_64, aarch64, armv7h).
 #
 # Сборка и установка у пользователя (yay/paru или вручную):
 #   makepkg -si
@@ -21,14 +21,19 @@ arch=('x86_64' 'aarch64' 'armv7h')
 url="https://github.com/linuxwaffIen/dma2ray"
 license=('GPL-3.0-only')
 depends=('python>=3.10' 'python-gobject' 'gtk4' 'libadwaita' 'polkit' 'xdg-utils' 'hicolor-icon-theme')
-# nuitka — компилятор (AUR); patchelf — обязателен для standalone-режима;
+# nuitka — компилятор из AUR (не в makedepends, чтобы не было циклической
+# зависимости при установке через makepkg -s): ./build.sh найдёт системный
+# nuitka или поставит его через pip в .build/venv при первой сборке.
+# patchelf — обязателен для standalone-режима Nuitka.
 # python-pip — запасной путь установки nuitka, если системного нет.
-makedepends=('git' 'nuitka' 'patchelf' 'python-pip')
+makedepends=('git' 'patchelf' 'python-pip')
 optdepends=(
     'gtk3: иконка в системном трее'
     'libayatana-appindicator: поддержка AppIndicator для трея'
 )
 provides=('dma2ray')
+# Nuitka-бинарник уже урезан (strip не нужен и может вызвать предупреждения).
+options=(!strip)
 source=("$pkgname::git+$url")
 sha256sums=('SKIP')
 
@@ -50,7 +55,7 @@ pkgver() {
 build() {
     cd "$pkgname"
     # Компиляция в dist/dma2ray.dist/dma2ray под архитектуру машины.
-    # Со системным nuitka (makedepends) сеть на этом шаге не нужна.
+    # build.sh сам поднимет окружение (.build/venv) и вызовет nuitka.
     ./build.sh
 }
 
@@ -62,7 +67,7 @@ package() {
                "$pkgdir/usr/share/applications" \
                "$pkgdir/usr/share/icons/hicolor/scalable/apps"
 
-    # Исходники (helper-скрипты, отладка, тесты) и данные.
+    # Исходники (helper-скрипты, тесты) и данные.
     cp -a dma2ray data "$pkgdir/usr/lib/dma2ray/"
     install -m644 LICENSE README.md "$pkgdir/usr/lib/dma2ray/"
     # Скомпилированный бинарник с библиотеками, helper-скриптами и данными.

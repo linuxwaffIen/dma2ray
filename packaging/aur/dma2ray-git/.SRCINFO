@@ -8,7 +8,6 @@ pkgbase = dma2ray-git
 	arch = armv7h
 	license = GPL-3.0-only
 	makedepends = git
-	makedepends = nuitka
 	makedepends = patchelf
 	makedepends = python-pip
 	depends = python>=3.10
@@ -21,6 +20,7 @@ pkgbase = dma2ray-git
 	optdepends = gtk3: иконка в системном трее
 	optdepends = libayatana-appindicator: поддержка AppIndicator для трея
 	provides = dma2ray
+	options = !strip
 	source = dma2ray-git::git+https://github.com/linuxwaffIen/dma2ray
 	sha256sums = SKIP
 

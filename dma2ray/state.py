@@ -34,8 +34,8 @@ LOG_LEVELS = ("debug", "info", "warning", "error")
 # Режимы подключения: локальный прокси, системный прокси ОС, TUN-ВПН.
 MODES = ("proxy", "system", "vpn")
 
-# Темы интерфейса (светлая/тёмная), см. «Настройки → Тема».
-THEME_VALUES = ("light", "dark")
+# Темы интерфейса: светлая, тёмная, системная.
+THEME_VALUES = ("light", "dark", "system")
 
 
 def new_id() -> str:

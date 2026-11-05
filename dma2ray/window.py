@@ -29,7 +29,8 @@ MODE_LABELS = (
     "ВПН (TUN, нужен root)",
 )
 
-THEME_LABELS = ("Светлая", "Темная")
+# Темы интерфейса: светлая, тёмная, системная (см. «Настройки → Тема»).
+THEME_LABELS = ("Светлая", "Темная", "Системная")
 
 CSS = b"""
 .latency-good { color: #26a269; }
@@ -538,7 +539,7 @@ class MainWindow(Adw.ApplicationWindow):
         appearance = Adw.PreferencesGroup(title="Оформление")
         theme_row = Adw.ComboRow(
             title="Тема",
-            subtitle="Светлая или тёмная тема интерфейса",
+            subtitle="Светлая, тёмная или системная тема интерфейса",
             model=Gtk.StringList.new(list(THEME_LABELS)),
         )
         current_theme = str(self.store.settings.get("theme", "light"))
@@ -1062,6 +1063,10 @@ class MainWindow(Adw.ApplicationWindow):
         profile = self.store.get_profile(profile_id)
         if profile:
             self._toast(f"Выбран профиль: {profile.name}")
+        # При смене сервера в режиме ВПН (TUN) переподключаемся автоматически.
+        status = self._core.status
+        if status.state == "running" and self.store.mode == "vpn":
+            self._start_selected()
 
     # ----------------------------------------------------------- quick connect
     def _quick_connect(self, *_args) -> None:
@@ -1517,8 +1522,17 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ---------------------------------------------------------------- settings
     def _apply_theme(self) -> None:
-        dark = str(self.store.settings.get("theme", "light")) == "dark"
-        Adw.StyleManager.get_default().set_color_scheme(
+        theme = str(self.store.settings.get("theme", "light"))
+        manager = Adw.StyleManager.get_default()
+        if theme == "system":
+            # «Системная» — следовать предпочтениям системы оформления.
+            dark = bool(manager.get_dark())
+            manager.set_color_scheme(
+                Adw.ColorScheme.PREFER_DARK if dark else Adw.ColorScheme.PREFER_LIGHT
+            )
+            return
+        dark = theme == "dark"
+        manager.set_color_scheme(
             Adw.ColorScheme.FORCE_DARK if dark else Adw.ColorScheme.FORCE_LIGHT
         )
 

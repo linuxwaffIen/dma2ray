@@ -5,7 +5,7 @@ from typing import Any
 
 from .vless import VlessProfile
 
-TUN_NAME = "xray0"
+TUN_NAME = "tun0"
 TUN_GATEWAY = "172.19.0.1/30"
 TUN_GATEWAY_V6 = "fdfe:dcba:9876::1/126"
 TUN_MTU = 1500

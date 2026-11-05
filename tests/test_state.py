@@ -141,6 +141,24 @@ class StoreTests(unittest.TestCase):
         store = Store(self.path)
         self.assertEqual(store.settings["theme"], "light")
 
+    def test_valid_system_theme_is_kept(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(
+            json.dumps(
+                {
+                    "profiles": [],
+                    "subscriptions": [],
+                    "settings": {"theme": "system"},
+                }
+            ),
+            "utf-8",
+        )
+        store = Store(self.path)
+        self.assertEqual(store.settings["theme"], "system")
+        store.set_setting("theme", "dark")
+        store = Store(self.path)
+        self.assertEqual(store.settings["theme"], "dark")
+
     def test_default_theme_is_light(self) -> None:
         store = Store(self.path)
         self.assertEqual(store.settings["theme"], DEFAULT_SETTINGS["theme"])
