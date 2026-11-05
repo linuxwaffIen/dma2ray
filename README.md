@@ -177,20 +177,6 @@ makepkg -si
 `build.sh` обнаруживает компилятор и сразу вызывает его. Если системного
 nuitka нет — скрипт сам ставит его pip'ом в `.build/venv`.
 
-Публикация/обновление пакета в AUR:
-
-```bash
-git clone ssh://aur@aur.archlinux.org/dma2ray-git.git
-cp packaging/aur/dma2ray-git/{PKGBUILD,.SRCINFO} dma2ray-git/
-cd dma2ray-git
-makepkg --printsrcinfo > .SRCINFO   # перегенерировать после правок
-git add PKGBUILD .SRCINFO
-git commit -m "dma2ray-git: 0.2.0"
-git push
-```
-
-Для публикации нужен аккаунт AUR и SSH-ключ, привязанный к нему.
-
 ## Использование
 
 Интерфейс разделён на три вкладки внизу окна: **Главная**, **Серверы** и
