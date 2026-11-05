@@ -1,0 +1,10 @@
+.build/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.pkg.tar.zst
+packaging/arch/*.tar.gz

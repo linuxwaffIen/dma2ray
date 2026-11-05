@@ -1,0 +1,58 @@
+# PKGBUILD для Dma2ray (Arch Linux / Arch Linux ARM).
+#
+# Сборка:
+#   cd packaging/arch
+#   ./make-dist.sh        # создать dma2ray-<версия>.tar.gz из исходников
+#   makepkg -si           # собрать и установить (pacman подставит зависимости)
+#
+# Приложение компилируется в единый бинарник (build.sh, Nuitka).
+# При первой сборке build.sh ставит nuitka и patchelf pip'ом в .build/venv —
+# нужен интернет; gcc входит в base-devel. Ядро Xray при сборке не нужно:
+# его скачивает само приложение («Настройки → Ядро → Скачать»).
+pkgname=dma2ray
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="GTK4/Adwaita-клиент VLESS (Xray): три режима подключения"
+arch=('aarch64' 'x86_64')
+url="local"
+license=('GPL-3.0-only')
+depends=('python>=3.10' 'python-gobject' 'gtk4' 'libadwaita' 'polkit' 'xdg-utils' 'hicolor-icon-theme')
+makedepends=('python' 'python-gobject' 'gtk4' 'libadwaita')
+optdepends=(
+    'gtk3: иконка в системном трее'
+    'libayatana-appindicator: поддержка AppIndicator для трея'
+)
+
+# Тарбол создаёт make-dist.sh локально, поэтому для него SKIP.
+source=("dma2ray-${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "${srcdir}/dma2ray-${pkgver}"
+    # Компиляция исходников в dist/dma2ray.dist/dma2ray.
+    ./build.sh
+}
+
+package() {
+    cd "${srcdir}/dma2ray-${pkgver}"
+
+    install -d "${pkgdir}/usr/lib/dma2ray" \
+               "${pkgdir}/usr/bin" \
+               "${pkgdir}/usr/share/applications" \
+               "${pkgdir}/usr/share/icons/hicolor/scalable/apps"
+
+    # Исходники (helper-скрипты, отладка, тесты) и данные.
+    cp -a dma2ray data "${pkgdir}/usr/lib/dma2ray/"
+    install -m644 LICENSE README.md "${pkgdir}/usr/lib/dma2ray/"
+    # Скомпилированный бинарник с библиотеками, helper-скриптами и данными.
+    cp -a dist/dma2ray.dist "${pkgdir}/usr/lib/dma2ray/app"
+    ln -s ../lib/dma2ray/app/dma2ray "${pkgdir}/usr/bin/dma2ray"
+
+    find "${pkgdir}/usr/lib/dma2ray" -type d -name __pycache__ -prune -exec rm -rf {} +
+    find "${pkgdir}/usr/lib/dma2ray" -type f -name '*.pyc' -delete
+
+    install -m644 data/io.github.dma2ray.Dma2ray.desktop \
+        "${pkgdir}/usr/share/applications/"
+    install -m644 data/io.github.dma2ray.Dma2ray.svg \
+        "${pkgdir}/usr/share/icons/hicolor/scalable/apps/"
+}
