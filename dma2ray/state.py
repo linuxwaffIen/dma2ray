@@ -26,16 +26,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "ping_timeout": 4.0,
     "auto_ping": True,
     "sort_by_latency": False,
-    "theme": "light",
 }
 
 LOG_LEVELS = ("debug", "info", "warning", "error")
 
 # Режимы подключения: локальный прокси, системный прокси ОС, TUN-ВПН.
 MODES = ("proxy", "system", "vpn")
-
-# Темы интерфейса: светлая, тёмная, системная.
-THEME_VALUES = ("light", "dark", "system")
 
 
 def new_id() -> str:
@@ -134,11 +130,6 @@ class Store:
             self.settings["log_level"]
             if self.settings.get("log_level") in LOG_LEVELS
             else "warning"
-        )
-        self.settings["theme"] = (
-            self.settings["theme"]
-            if self.settings.get("theme") in THEME_VALUES
-            else DEFAULT_SETTINGS["theme"]
         )
         # Миграция: старые состояния имели только tun_enabled (bool).
         if raw_settings is None or "mode" not in raw_settings:

@@ -110,7 +110,6 @@ class StoreTests(unittest.TestCase):
                         "socks_port": "not a number",
                         "tun_enabled": "yes",
                         "log_level": "verbose",
-                        "theme": "neon",
                     },
                 }
             ),
@@ -121,48 +120,6 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(store.settings["socks_port"], DEFAULT_SETTINGS["socks_port"])
         self.assertEqual(store.settings["tun_enabled"], DEFAULT_SETTINGS["tun_enabled"])
         self.assertEqual(store.settings["log_level"], "warning")
-        self.assertEqual(store.settings["theme"], "light")
-
-    def test_valid_theme_is_kept(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "profiles": [],
-                    "subscriptions": [],
-                    "settings": {"theme": "dark"},
-                }
-            ),
-            "utf-8",
-        )
-        store = Store(self.path)
-        self.assertEqual(store.settings["theme"], "dark")
-        store.set_setting("theme", "light")
-        store = Store(self.path)
-        self.assertEqual(store.settings["theme"], "light")
-
-    def test_valid_system_theme_is_kept(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "profiles": [],
-                    "subscriptions": [],
-                    "settings": {"theme": "system"},
-                }
-            ),
-            "utf-8",
-        )
-        store = Store(self.path)
-        self.assertEqual(store.settings["theme"], "system")
-        store.set_setting("theme", "dark")
-        store = Store(self.path)
-        self.assertEqual(store.settings["theme"], "dark")
-
-    def test_default_theme_is_light(self) -> None:
-        store = Store(self.path)
-        self.assertEqual(store.settings["theme"], DEFAULT_SETTINGS["theme"])
-        self.assertEqual(DEFAULT_SETTINGS["theme"], "light")
 
     def test_old_state_gets_new_settings_defaults(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

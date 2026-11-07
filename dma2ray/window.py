@@ -17,7 +17,7 @@ from .flags import flag_for
 from .installer import install_core
 from .ping import tcp_ping
 from .speedtest import SpeedResult, speed_test
-from .state import LOG_LEVELS, MODES, THEME_VALUES, Profile, Store
+from .state import LOG_LEVELS, MODES, Profile, Store
 from .subscriptions import FetchResult, fetch_and_parse
 from .sysproxy import SysProxyError
 from .tray import TrayController
@@ -28,9 +28,6 @@ MODE_LABELS = (
     "Системный прокси",
     "ВПН (TUN, нужен root)",
 )
-
-# Темы интерфейса: светлая, тёмная, системная (см. «Настройки → Тема»).
-THEME_LABELS = ("Светлая", "Темная", "Системная")
 
 CSS = b"""
 .latency-good { color: #26a269; }
@@ -69,7 +66,7 @@ CSS = b"""
 }
 .server-card:hover { background-color: alpha(currentColor, 0.12); }
 
-/* Dark blue top and bottom bars instead of white/gray (both themes). */
+/* Blue bars (GTK picks text color itself - readable on any system theme). */
 .top-bar,
 .bottom-bar,
 headerbar,
@@ -77,27 +74,8 @@ viewswitcherbar,
 actionbar {
   background-color: #14386e;
 }
-.top-bar,
-.bottom-bar,
-headerbar,
-viewswitcherbar,
-actionbar {
-  color: #ffffff;
-}
-headerbar button,
-viewswitcherbar button {
-  color: #ffffff;
-  transition: background-color 300ms ease, color 300ms ease,
-              box-shadow 300ms ease;
-}
-headerbar label,
-viewswitcherbar label {
-  color: #ffffff;
-  transition: color 300ms ease;
-}
 viewswitcherbar button:checked {
   background-color: #2f6bd8;
-  transition: background-color 300ms ease, color 300ms ease;
 }
 """
 
@@ -162,7 +140,6 @@ class MainWindow(Adw.ApplicationWindow):
             on_quit=lambda: GLib.idle_add(self.app.quit),
         )
         self._install_css()
-        self._apply_theme()
         self._build_actions()
         self._build_ui()
         self._install_icon()
@@ -535,18 +512,6 @@ class MainWindow(Adw.ApplicationWindow):
         log_row.connect("notify::selected", self._settings_log_level)
         connection.add(log_row)
         page.add(connection)
-
-        appearance = Adw.PreferencesGroup(title="Оформление")
-        theme_row = Adw.ComboRow(
-            title="Тема",
-            subtitle="Светлая, тёмная или системная тема интерфейса",
-            model=Gtk.StringList.new(list(THEME_LABELS)),
-        )
-        current_theme = str(self.store.settings.get("theme", "light"))
-        theme_row.set_selected(THEME_VALUES.index(current_theme) if current_theme in THEME_VALUES else 0)
-        theme_row.connect("notify::selected", self._settings_theme)
-        appearance.add(theme_row)
-        page.add(appearance)
 
         interface = Adw.PreferencesGroup(title="Серверы и задержки")
         auto_ping_row = Adw.SwitchRow(
@@ -1521,31 +1486,6 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.choose(self, None, on_response)
 
     # ---------------------------------------------------------------- settings
-    def _apply_theme(self) -> None:
-        theme = str(self.store.settings.get("theme", "light"))
-        manager = Adw.StyleManager.get_default()
-        if theme == "system":
-            # «Системная» — следовать предпочтениям системы оформления.
-            dark = bool(manager.get_dark())
-            manager.set_color_scheme(
-                Adw.ColorScheme.PREFER_DARK if dark else Adw.ColorScheme.PREFER_LIGHT
-            )
-            return
-        dark = theme == "dark"
-        manager.set_color_scheme(
-            Adw.ColorScheme.FORCE_DARK if dark else Adw.ColorScheme.FORCE_LIGHT
-        )
-
-    def _settings_theme(self, row: Adw.ComboRow, _param) -> None:
-        index = int(row.get_selected())
-        if not 0 <= index < len(THEME_VALUES):
-            return
-        theme = THEME_VALUES[index]
-        if theme == self.store.settings.get("theme"):
-            return
-        self.store.set_setting("theme", theme)
-        self._apply_theme()
-
     def _settings_mode(self, row: Adw.ComboRow, _param) -> None:
         index = int(row.get_selected())
         if not 0 <= index < len(MODES):
