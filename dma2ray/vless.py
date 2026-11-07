@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import base64
+import json
+from dataclasses import dataclass, field, replace
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 
@@ -63,6 +65,7 @@ class VlessProfile:
     quic_security: str = "none"
     quic_key: str = ""
     extra: dict[str, str] = field(default_factory=dict)
+    protocol: str = "vless"
 
     @property
     def endpoint(self) -> str:
@@ -149,6 +152,58 @@ class VlessProfile:
         return stream
 
     def to_xray_outbound(self, address_override: str | None = None) -> dict:
+        address = address_override or self.address
+        if self.protocol == "trojan":
+            outbound: dict = {
+                "tag": "proxy",
+                "protocol": "trojan",
+                "settings": {
+                    "server": address,
+                    "server_port": self.port,
+                    "password": self.uuid,
+                },
+            }
+            outbound["streamSettings"] = self.to_xray_stream()
+            return outbound
+        if self.protocol == "shadowsocks":
+            return {
+                "tag": "proxy",
+                "protocol": "shadowsocks",
+                "settings": {
+                    "server": address,
+                    "server_port": self.port,
+                    "method": self.security or "aes-128-gcm",
+                    "password": self.uuid,
+                },
+            }
+        if self.protocol == "wireguard":
+            return {
+                "tag": "proxy",
+                "protocol": "wireguard",
+                "settings": {
+                    "secret": self.uuid,
+                },
+            }
+        if self.protocol == "hysteria" or self.protocol == "hysteria2":
+            return {
+                "tag": "proxy",
+                "protocol": "hysteria",
+                "settings": {
+                    "server": address,
+                    "port": self.port,
+                    "password": self.uuid,
+                },
+            }
+        if self.protocol == "amnezia":
+            return {
+                "tag": "proxy",
+                "protocol": "amnezia",
+                "settings": {
+                    "server": address,
+                    "port": self.port,
+                    "password": self.uuid,
+                },
+            }
         user: dict = {"id": self.uuid, "encryption": "none"}
         if self.flow:
             user["flow"] = self.flow
@@ -158,7 +213,7 @@ class VlessProfile:
             "settings": {
                 "vnext": [
                     {
-                        "address": address_override or self.address,
+                        "address": address,
                         "port": self.port,
                         "users": [user],
                     }
@@ -166,6 +221,117 @@ class VlessProfile:
             },
             "streamSettings": self.to_xray_stream(),
         }
+
+
+def parse_trojan(uri: str) -> VlessProfile:
+    uri = uri.strip()
+    if not uri.lower().startswith("trojan://"):
+        raise VlessError("Ссылка должна начинаться с trojan://")
+    rest = uri[len("trojan://"):]
+    auth, _, hostport = rest.partition("@")
+    password = unquote(auth)
+    if not password:
+        raise VlessError("В ссылке отсутствует пароль Trojan")
+    hostport = hostport.split("?", 1)[0]
+    host, _, port_str = hostport.rpartition(":")
+    if not host:
+        raise VlessError("В ссылке отсутствует адрес сервера")
+    try:
+        port = int(port_str or "443")
+    except ValueError as exc:
+        raise VlessError(f"Некорректный порт: {exc}") from exc
+    profile = replace(
+        VlessProfile(
+            uuid=password,
+            address=host,
+            port=port,
+            name=f"trojan://{host}:{port}",
+            security="tls",
+            network="tcp",
+        ),
+        protocol="trojan",
+    )
+    return profile
+
+
+def parse_shadowsocks(uri: str) -> VlessProfile:
+    uri = uri.strip()
+    if not uri.lower().startswith("ss://"):
+        raise VlessError("Ссылка должна начинаться с ss://")
+    payload = uri[len("ss://"):]
+    method_password, _, rest = payload.partition("@")
+    method, _, password = method_password.partition(":")
+    hostport = rest.split("?", 1)[0]
+    host, _, port_str = hostport.rpartition(":")
+    try:
+        port = int(port_str or "443")
+    except ValueError as exc:
+        raise VlessError(f"Некорректный порт: {exc}") from exc
+    return replace(
+        VlessProfile(
+            uuid=password,
+            address=host,
+            port=port,
+            name=f"ss://{host}:{port}",
+            security=method or "aes-128-gcm",
+        ),
+        protocol="shadowsocks",
+    )
+
+
+def parse_vmess(uri: str) -> VlessProfile:
+    uri = uri.strip()
+    if not uri.lower().startswith("vmess://"):
+        raise VlessError("Ссылка должна начинаться с vmess://")
+    payload = uri[len("vmess://"):]
+    padded = payload + "=" * (-len(payload) % 4)
+    raw = base64.b64decode(padded, altchars="-_", validate=False)
+    data = json.loads(raw.decode("utf-8"))
+    uuid = str(data.get("id") or data.get("uuid") or "")
+    address = str(data.get("add") or data.get("address") or "")
+    port = int(data.get("port") or 443)
+    return replace(
+        VlessProfile(
+            uuid=uuid,
+            address=address,
+            port=port,
+            name=str(data.get("ps") or f"{address}:{port}"),
+        ),
+        protocol="vless",
+    )
+
+
+def parse_hysteria2(uri: str) -> VlessProfile:
+    uri = uri.strip().lower()
+    if not (uri.startswith("hysteria2://") or uri.startswith("hy2://")):
+        raise VlessError("Ссылка должна начинаться с hysteria2:// или hy2://")
+    rest = uri.split("://", 1)[1]
+    authority, _, query = rest.partition("?")
+    host, _, port_str = authority.rpartition(":")
+    try:
+        port = int(port_str or "443")
+    except ValueError as exc:
+        raise VlessError(f"Некорректный порт: {exc}") from exc
+    q = {k: v for k, v in parse_qsl(query, keep_blank_values=True)}
+    password = q.get("p") or q.get("password") or ""
+    return replace(
+        VlessProfile(
+            uuid=password,
+            address=host,
+            port=port,
+            name=f"hysteria2://{host}:{port}",
+            security="none",
+        ),
+        protocol="hysteria",
+    )
+
+
+def parse_wireguard(uri: str) -> VlessProfile:
+    raise VlessError("WireGuard пока не поддерживается в клиенте")
+
+
+def parse_amnezia(uri: str) -> VlessProfile:
+    raise VlessError("Amnezia пока не поддерживается в клиенте")
 
 
 def _split_hosts(value: str) -> list[str]:

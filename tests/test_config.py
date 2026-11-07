@@ -8,7 +8,7 @@ from dma2ray.config import (
     TUN_GATEWAY_V6,
     build_config,
 )
-from dma2ray.vless import parse_vless
+from dma2ray.vless import parse_hysteria2, parse_shadowsocks, parse_trojan, parse_vless
 
 UUID = "11111111-2222-3333-4444-555555555555"
 
@@ -80,6 +80,33 @@ class BuildConfigTests(unittest.TestCase):
     def test_log_level_is_copied(self) -> None:
         config = build_config(make_profile(), tun=False, log_level="debug")
         self.assertEqual(config["log"]["loglevel"], "debug")
+
+    def test_trojan_outbound_is_generated(self) -> None:
+        profile = parse_trojan("trojan://passw0rd@example.com:443?path=/&security=tls")
+        config = build_config(profile, tun=False)
+        proxy = config["outbounds"][0]
+        self.assertEqual(proxy["tag"], "proxy")
+        self.assertEqual(proxy["protocol"], "trojan")
+        self.assertEqual(proxy["settings"]["server"], "example.com")
+        self.assertEqual(proxy["settings"]["server_port"], 443)
+
+    def test_shadowsocks_outbound_is_generated(self) -> None:
+        profile = parse_shadowsocks("ss://aes-128-gcm:passw0rd@example.com:443")
+        config = build_config(profile, tun=False)
+        proxy = config["outbounds"][0]
+        self.assertEqual(proxy["tag"], "proxy")
+        self.assertEqual(proxy["protocol"], "shadowsocks")
+        self.assertEqual(proxy["settings"]["server"], "example.com")
+        self.assertEqual(proxy["settings"]["server_port"], 443)
+
+    def test_hysteria2_outbound_is_generated(self) -> None:
+        profile = parse_hysteria2("hysteria2://host.com:443?p=passw0rd")
+        config = build_config(profile, tun=False)
+        proxy = config["outbounds"][0]
+        self.assertEqual(proxy["tag"], "proxy")
+        self.assertEqual(proxy["protocol"], "hysteria")
+        self.assertEqual(proxy["settings"]["server"], "host.com")
+        self.assertEqual(proxy["settings"]["port"], 443)
 
 
 if __name__ == "__main__":

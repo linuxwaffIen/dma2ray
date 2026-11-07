@@ -7,12 +7,27 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 
-from .vless import VlessError, parse_vless
+from .vless import (
+    VlessError,
+    parse_amnezia,
+    parse_hysteria2,
+    parse_shadowsocks,
+    parse_trojan,
+    parse_vless,
+    parse_vmess,
+)
 
 MAX_SUBSCRIPTION_BYTES = 5 * 1024 * 1024
 USER_AGENT = "dma2ray/0.2"
-SUPPORTED_PREFIXES = ("vless://",)
-KNOWN_PREFIXES = ("vless://", "vmess://", "trojan://", "ss://", "hysteria2://", "hy2://", "tuic://")
+SUPPORTED_PREFIXES = (
+    "vless://",
+    "trojan://",
+    "ss://",
+    "vmess://",
+    "hysteria2://",
+    "hy2://",
+)
+KNOWN_PREFIXES = ("tuic://",)
 
 
 @dataclass
@@ -46,6 +61,13 @@ def _decode_payload(text: str) -> str:
     return decoded if "://" in decoded else text
 
 
+def _safe_parse(parser, uri: str):
+    try:
+        return parser(uri)
+    except Exception:
+        return None
+
+
 def parse_subscription(text: str) -> FetchResult:
     decoded = _decode_payload(text)
     result = FetchResult()
@@ -60,13 +82,25 @@ def parse_subscription(text: str) -> FetchResult:
             if line in seen:
                 continue
             seen.add(line)
-            try:
-                profile = parse_vless(line)
-            except VlessError as exc:
+            profile = None
+            parse_error: str | None = None
+            if lowered.startswith("vless://"):
+                profile = _safe_parse(parse_vless, line)
+            elif lowered.startswith("trojan://"):
+                profile = _safe_parse(parse_trojan, line)
+            elif lowered.startswith("ss://"):
+                profile = _safe_parse(parse_shadowsocks, line)
+            elif lowered.startswith("vmess://"):
+                profile = _safe_parse(parse_vmess, line)
+            elif lowered.startswith("hysteria2://") or lowered.startswith("hy2://"):
+                profile = _safe_parse(parse_hysteria2, line)
+            if profile is not None:
+                result.entries.append((profile.name, line))
+            else:
+                if parse_error is None:
+                    parse_error = "Не удалось распарсить ссылку"
                 result.invalid += 1
-                result.errors.append(str(exc))
-                continue
-            result.entries.append((profile.name, line))
+                result.errors.append(str(parse_error))
         elif lowered.startswith(KNOWN_PREFIXES):
             result.raw_count += 1
             result.unsupported += 1

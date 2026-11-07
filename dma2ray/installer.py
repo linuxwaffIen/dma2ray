@@ -17,6 +17,23 @@ from . import paths
 RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
 USER_AGENT = "dma2ray/0.2"
 
+SUPPORTED_ARCHS = frozenset(
+    {
+        "x86_64",
+        "amd64",
+        "aarch64",
+        "arm64",
+        "armv7l",
+        "armv7",
+        "armv6l",
+        "i386",
+        "i486",
+        "i586",
+        "i686",
+        "riscv64",
+    }
+)
+
 ASSETS = {
     "x86_64": "Xray-linux-64.zip",
     "amd64": "Xray-linux-64.zip",
@@ -35,8 +52,8 @@ ASSETS = {
 Progress = Callable[[float, str], None]
 
 
-def asset_name() -> str:
-    machine = platform.machine().lower()
+def asset_name(arch: str | None = None) -> str:
+    machine = (arch or platform.machine()).lower()
     asset = ASSETS.get(machine)
     if not asset:
         raise RuntimeError(f"Нет сборки Xray для архитектуры {machine}")
@@ -82,8 +99,8 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def install_core(progress: Progress | None = None) -> Path:
-    asset = asset_name()
+def install_core(progress: Progress | None = None, arch: str | None = None) -> Path:
+    asset = asset_name(arch)
     paths.CORE_BIN_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="dma2ray-core-", dir=str(paths.CACHE_DIR)) as tmp:
         tmpdir = Path(tmp)
@@ -128,5 +145,5 @@ def install_core(progress: Progress | None = None) -> Path:
                 shutil.copy2(source, paths.CORE_BIN_DIR / extra)
 
     if progress:
-        progress(1.0, "Xray-core установлен")
+        progress(1.0, f"Xray-core для {arch or platform.machine()} установлен")
     return paths.CORE_PATH
