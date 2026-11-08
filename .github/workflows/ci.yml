@@ -167,7 +167,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: Dma2ray contributors <linuxwaffIen@users.noreply.github.com>
 Description: Dma2ray - VLESS client for Linux (GTK4/libadwaita, Xray-core)
- Homepage: https://github.com/linuxwaffIen/dma2ray
+Homepage: https://github.com/linuxwaffIen/dma2ray
 EOF
           dpkg-deb --build "$DEB_STAGE" dma2ray_0.2.0-1_amd64.deb
           ls -lh dma2ray_0.2.0-1_amd64.deb
