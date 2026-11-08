@@ -609,46 +609,6 @@ class MainWindow(Adw.ApplicationWindow):
         startup.add(auto_row)
         page.add(startup)
 
-
-        core_group = Adw.PreferencesGroup(
-            title="Ядро",
-            description="Xray-core требуется для VLESS, прокси и TUN.",
-        )
-        core_tab_view = Adw.TabView()
-        for arch, asset in sorted(ASSETS_XRAY.items()):
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-            core_row = Adw.ActionRow(
-                title=f"Ядро Xray ({arch})",
-                subtitle=f"Сборка {asset}",
-            )
-            core_install_button = Gtk.Button(label="Скачать")
-            supported = arch in SUPPORTED_ARCHS
-            if supported:
-                core_install_button.add_css_class("suggested-action")
-            else:
-                core_install_button.add_css_class("flat")
-                core_install_button.set_sensitive(False)
-            core_install_button.set_tooltip_text(f"Скачать ядро Xray для архитектуры {arch}")
-            core_install_button.connect(
-                "clicked",
-                lambda *_, a=arch, b=core_install_button, r=core_row: self._install_core_for_arch(
-                    a, b, r, "xray"
-                ),
-            )
-            core_row.add_suffix(core_install_button)
-            box.append(core_row)
-
-            separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-            box.append(separator)
-
-            core_page = core_tab_view.add_page(box)
-            core_page.set_title(f"Ядро Xray · {arch}")
-            self._core_tabs[f"{arch}:xray"] = core_row
-            self._core_buttons[f"{arch}:xray"] = core_install_button
-
-        core_group.add(core_tab_view)
-        page.add(core_group)
-
         diagnostics = Adw.PreferencesGroup(title="Диагностика")
         log_action = Adw.ActionRow(title="Журнал Xray", subtitle="Последние сообщения ядра")
         log_action.set_activatable(True)
@@ -676,6 +636,7 @@ class MainWindow(Adw.ApplicationWindow):
             "settings": lambda *_: self.view_stack.set_visible_child_name("settings"),
             "show-log": lambda *_: self._show_log(),
             "about": lambda *_: self._about_dialog(),
+            "kernels": lambda *_: self._show_kernels_dialog(),
             "quit": lambda *_: self.app.quit(),
         }
         for name, callback in simple.items():
@@ -1769,6 +1730,70 @@ class MainWindow(Adw.ApplicationWindow):
 
         dialog.connect("closed", closed)
         self._log_dialog = dialog
+        dialog.present(self)
+
+    # ------------------------------------------------------------------ kernels
+    def _show_kernels_dialog(self) -> None:
+        """Диалог «Ядро» (как в гите): вкладка ядер с кнопкой «Скачать»."""
+        dialog = Adw.Dialog()
+        dialog.set_title("Ядро")
+        dialog.set_content_width(700)
+        dialog.set_content_height(480)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(
+            Adw.WindowTitle(
+                title="Ядро",
+                subtitle=f"Версия {paths.VERSION}",
+            )
+        )
+        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
+        close.add_css_class("flat")
+        close.set_tooltip_text("Закрыть")
+        close.connect("clicked", lambda *_: dialog.close())
+        header.pack_end(close)
+        toolbar.add_top_bar(header)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        core_tab_view = Adw.TabView()
+        for arch, asset in sorted(ASSETS_XRAY.items()):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            core_row = Adw.ActionRow(
+                title=f"Ядро Xray ({arch})",
+                subtitle=f"Сборка {asset}",
+            )
+            core_install_button = Gtk.Button(label="Скачать")
+            supported = arch in SUPPORTED_ARCHS
+            if supported:
+                core_install_button.add_css_class("suggested-action")
+            else:
+                core_install_button.add_css_class("flat")
+                core_install_button.set_sensitive(False)
+            core_install_button.set_tooltip_text(f"Скачать ядро Xray для архитектуры {arch}")
+            core_install_button.connect(
+                "clicked",
+                lambda *_, a=arch, b=core_install_button, r=core_row: self._install_core_for_arch(
+                    a, b, r, "xray"
+                ),
+            )
+            core_row.add_suffix(core_install_button)
+            box.append(core_row)
+
+            separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            box.append(separator)
+
+            core_page = core_tab_view.add_page(box)
+            core_page.set_title(f"Ядро Xray · {arch}")
+            self._core_tabs[f"{arch}:xray"] = core_row
+            self._core_buttons[f"{arch}:xray"] = core_install_button
+
+        scrolled.set_child(core_tab_view)
+        toolbar.set_content(scrolled)
+        dialog.set_child(toolbar)
         dialog.present(self)
 
     # ------------------------------------------------------------------ about
