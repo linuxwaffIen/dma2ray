@@ -15,7 +15,15 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
-from .installer import ASSETS_XRAY, SUPPORTED_ARCHS, asset_name, install_core
+from .installer import (
+    ASSETS_XRAY,
+    ASSETS_AMNEZIA_XRAY,
+    SUPPORTED_ARCHS,
+    asset_name,
+    current_arch,
+    install_core,
+    release_base,
+)
 from .ping import tcp_ping
 from .speedtest import SpeedResult, speed_test
 from .state import LOG_LEVELS, MODES, Profile, Store
@@ -1734,7 +1742,8 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ kernels
     def _show_kernels_dialog(self) -> None:
-        """Диалог «Ядро» (как в гите): вкладка ядер с кнопкой «Скачать»."""
+        """Диалог «Ядро»: вкладка ядер для архитектуры пользователя с кнопкой «Скачать»."""
+        machine = current_arch()
         dialog = Adw.Dialog()
         dialog.set_title("Ядро")
         dialog.set_content_width(700)
@@ -1745,14 +1754,9 @@ class MainWindow(Adw.ApplicationWindow):
         header.set_title_widget(
             Adw.WindowTitle(
                 title="Ядро",
-                subtitle=f"Версия {paths.VERSION}",
+                subtitle=f"{machine} · версия {paths.VERSION}",
             )
         )
-        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
-        close.add_css_class("flat")
-        close.set_tooltip_text("Закрыть")
-        close.connect("clicked", lambda *_: dialog.close())
-        header.pack_end(close)
         toolbar.add_top_bar(header)
 
         scrolled = Gtk.ScrolledWindow()
@@ -1760,24 +1764,31 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
         core_tab_view = Adw.TabView()
-        for arch, asset in sorted(ASSETS_XRAY.items()):
+        for kernel_type, title in (("xray", "Ядро Xray"), ("amnezia-xray", "Ядро Amnezia Xray")):
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            asset = None
+            try:
+                asset = asset_name(kernel_type, machine)
+            except RuntimeError:
+                asset = None
             core_row = Adw.ActionRow(
-                title=f"Ядро Xray ({arch})",
-                subtitle=f"Сборка {asset}",
+                title=f"{title} ({machine})",
+                subtitle=(f"Сборка {asset}" if asset else f"Для {machine} недоступно"),
             )
             core_install_button = Gtk.Button(label="Скачать")
-            supported = arch in SUPPORTED_ARCHS
+            supported = machine in SUPPORTED_ARCHS and asset is not None
             if supported:
                 core_install_button.add_css_class("suggested-action")
             else:
                 core_install_button.add_css_class("flat")
                 core_install_button.set_sensitive(False)
-            core_install_button.set_tooltip_text(f"Скачать ядро Xray для архитектуры {arch}")
+            core_install_button.set_tooltip_text(
+                f"Скачать {title} для архитектуры {machine}"
+            )
             core_install_button.connect(
                 "clicked",
-                lambda *_, a=arch, b=core_install_button, r=core_row: self._install_core_for_arch(
-                    a, b, r, "xray"
+                lambda *_, a=machine, b=core_install_button, r=core_row, kt=kernel_type: self._install_core_for_arch(
+                    a, b, r, kt
                 ),
             )
             core_row.add_suffix(core_install_button)
@@ -1787,9 +1798,9 @@ class MainWindow(Adw.ApplicationWindow):
             box.append(separator)
 
             core_page = core_tab_view.add_page(box)
-            core_page.set_title(f"Ядро Xray · {arch}")
-            self._core_tabs[f"{arch}:xray"] = core_row
-            self._core_buttons[f"{arch}:xray"] = core_install_button
+            core_page.set_title(f"{title} · {machine}")
+            self._core_tabs[f"{machine}:{kernel_type}"] = core_row
+            self._core_buttons[f"{machine}:{kernel_type}"] = core_install_button
 
         scrolled.set_child(core_tab_view)
         toolbar.set_content(scrolled)
