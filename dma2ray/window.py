@@ -1753,11 +1753,11 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:
-        """Диалог «О программе» — версия + 3 кнопки в строку (как в AboutDialog)."""
+        """Диалог «О программе» (как в гите): кнопки Подробности / Правовые сведения / Что нового — в столбик."""
         dialog = Adw.Dialog()
         dialog.set_title("О программе")
         dialog.set_content_width(560)
-        dialog.set_content_height(340)
+        dialog.set_content_height(480)
 
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
@@ -1786,18 +1786,22 @@ class MainWindow(Adw.ApplicationWindow):
         box.set_halign(Gtk.Align.CENTER)
         box.set_valign(Gtk.Align.CENTER)
 
+        # Иконка приложения
         icon = Gtk.Image.new_from_icon_name(paths.ICON_NAME)
         icon.set_pixel_size(64)
         box.append(icon)
 
+        # Название
         title = Gtk.Label(label=paths.APP_TITLE)
         title.add_css_class("title-1")
         box.append(title)
 
+        # Версия
         version = Gtk.Label(label=f"Версия {paths.VERSION}")
         version.add_css_class("caption")
         box.append(version)
 
+        # Разработчик
         dev = Gtk.Label(label="Dma2ray contributors")
         dev.add_css_class("caption")
         box.append(dev)
@@ -1805,6 +1809,7 @@ class MainWindow(Adw.ApplicationWindow):
         sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         box.append(sep)
 
+        # Описание (как в AboutDialog)
         desc = Gtk.Label(
             label=(
                 "Клиент VLESS для Linux на GTK4/libadwaita.\n"
@@ -1818,25 +1823,24 @@ class MainWindow(Adw.ApplicationWindow):
         desc.set_max_width_chars(60)
         box.append(desc)
 
-        btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        btns.set_halign(Gtk.Align.CENTER)
-
+        # Три кнопки в столбик: Подробности, Правовые сведения, Что нового — одинаковые, как в гите
         btn_details = Gtk.Button(label="Подробности")
         btn_details.add_css_class("flat")
+        btn_details.set_halign(Gtk.Align.CENTER)
         btn_details.connect("clicked", lambda *_: self._show_license())
-        btns.append(btn_details)
+        box.append(btn_details)
 
         btn_legal = Gtk.Button(label="Правовые сведения")
         btn_legal.add_css_class("flat")
+        btn_legal.set_halign(Gtk.Align.CENTER)
         btn_legal.connect("clicked", lambda *_: self._show_legal())
-        btns.append(btn_legal)
+        box.append(btn_legal)
 
         btn_whatsnew = Gtk.Button(label="Что нового")
         btn_whatsnew.add_css_class("flat")
+        btn_whatsnew.set_halign(Gtk.Align.CENTER)
         btn_whatsnew.connect("clicked", lambda *_: (dialog.close(), self._whatsnew_dialog()))
-        btns.append(btn_whatsnew)
-
-        box.append(btns)
+        box.append(btn_whatsnew)
 
         scrolled.set_child(box)
         toolbar.set_content(scrolled)
