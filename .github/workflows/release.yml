@@ -53,11 +53,6 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: Сборка deb / apk / arch пакетов
-        run: |
-          chmod +x scripts/build_packages.sh
-          ./scripts/build_packages.sh
-
       - name: Проверка версии бинарника
         run: |
           dist/dma2ray.dist/dma2ray --version
@@ -72,24 +67,12 @@ jobs:
 
             ## Установка
 
-            ### Arch Linux (x86_64)
+            Запустите бинарник:
             ```bash
-            sudo pacman -U dma2ray-0.2.0-1-x86_64.pkg.tar.zst
-            ```
-
-            ### Debian/Ubuntu (amd64)
-            ```bash
-            sudo dpkg -i dma2ray_0.2.0-1_amd64.deb
-            ```
-
-            ### Alpine (x86_64)
-            ```bash
-            sudo apk add dma2ray-0.2.0-r1-x86_64.apk
+            ./dma2ray
             ```
           files: |
-            dma2ray_0.2.0-1_amd64.deb
-            dma2ray-0.2.0-1-x86_64.pkg.tar.zst
-            dma2ray-0.2.0-r1-x86_64.apk
+            dist/dma2ray.dist/dma2ray
           draft: false
           prerelease: false
         env:

@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Установка системных зависимостей (GTK4, libadwaita, X11)
+      - name: Установка системных зависимостей
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -49,7 +49,7 @@ jobs:
           python3 -m unittest discover -s tests -p "test_*.py"
 
   build:
-    name: Сборка пакетов
+    name: Сборка бинарника и пакетов
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -66,7 +66,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            dpkg-dev
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            gir1.2-gtk-4.0 \
+            gir1.2-adw-1 \
+            libgirepository1.0-dev \
+            python3-gi \
+            python3-gi-cairo \
+            libx11-dev \
+            libglib2.0-dev \
+            libjson-c-dev \
+            dpkg-dev \
+            binutils \
+            coreutils \
+            tar \
+            gzip \
+            xz-utils \
+            zstd \
+            bsdtar \
+            fakeroot
 
       - name: Установка Nuitka и patchelf
         run: |
@@ -78,21 +96,13 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: Сборка deb / apk / arch пакетов
-        run: |
-          chmod +x scripts/build_packages.sh
-          ./scripts/build_packages.sh
-
       - name: Проверка версии бинарника
         run: |
           dist/dma2ray.dist/dma2ray --version
 
-      - name: Загрузка артефактов
+      - name: Загрузка бинарника как артефакт
         uses: actions/upload-artifact@v4
         with:
-          name: dma2ray-packages
-          path: |
-            dma2ray_0.2.0-1_amd64.deb
-            dma2ray-0.2.0-1-x86_64.pkg.tar.zst
-            dma2ray-0.2.0-r1-x86_64.apk
+          name: dma2ray-binary
+          path: dist/dma2ray.dist/dma2ray
           retention-days: 7
