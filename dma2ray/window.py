@@ -1753,7 +1753,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:
-        """Диалог «О программе» с кнопкой «Что нового» внизу."""
+        """Диалог «О программе» с кнопками Подробности / Правовые сведения / Что нового."""
         dialog = Adw.Dialog()
         dialog.set_title("О программе")
         dialog.set_content_width(700)
@@ -1823,17 +1823,83 @@ class MainWindow(Adw.ApplicationWindow):
         desc.set_max_width_chars(60)
         box.append(desc)
 
-        # Кнопка «Что нового» внизу
-        whatsnew = Gtk.Button(label="Что нового")
-        whatsnew.add_css_class("suggested-action")
-        whatsnew.set_halign(Gtk.Align.CENTER)
-        whatsnew.connect("clicked", lambda *_: (dialog.close(), self._whatsnew_dialog()))
-        box.append(whatsnew)
+        # Кнопки внизу: Подробности, Правовые сведения, Что нового — одинаковый стиль
+        btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        btns.set_halign(Gtk.Align.CENTER)
+
+        btn_details = Gtk.Button(label="Подробности")
+        btn_details.add_css_class("flat")
+        btn_details.set_tooltip_text("Показать лицензию")
+        btn_details.connect("clicked", lambda *_: self._show_license())
+
+        btn_legal = Gtk.Button(label="Правовые сведения")
+        btn_legal.add_css_class("flat")
+        btn_legal.set_tooltip_text("Открыть лицензию и сайт проекта")
+        btn_legal.connect("clicked", lambda *_: self._show_legal())
+
+        btn_whatsnew = Gtk.Button(label="Что нового")
+        btn_whatsnew.add_css_class("flat")
+        btn_whatsnew.set_tooltip_text("Список изменений")
+        btn_whatsnew.connect("clicked", lambda *_: (dialog.close(), self._whatsnew_dialog()))
+
+        btns.append(btn_details)
+        btns.append(btn_legal)
+        btns.append(btn_whatsnew)
+        box.append(btns)
 
         scrolled.set_child(box)
         toolbar.set_content(scrolled)
         dialog.set_child(toolbar)
         dialog.present(self)
+
+    def _show_license(self) -> None:
+        dialog = Adw.Dialog()
+        dialog.set_title("Лицензия")
+        dialog.set_content_width(700)
+        dialog.set_content_height(500)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(
+            Adw.WindowTitle(title="Лицензия", subtitle="GNU GPL v3")
+        )
+        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
+        close.add_css_class("flat")
+        close.set_tooltip_text("Закрыть")
+        close.connect("clicked", lambda *_: dialog.close())
+        header.pack_end(close)
+        toolbar.add_top_bar(header)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        text = Gtk.TextView()
+        text.set_editable(False)
+        text.set_cursor_visible(False)
+        text.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        text.set_margin_start(16)
+        text.set_margin_end(16)
+        text.set_margin_top(16)
+        text.set_margin_bottom(16)
+        buffer = text.get_buffer()
+        buffer.set_text(
+            "Dma2ray — клиент VLESS для Linux (GTK4/libadwaita).\n\n"
+            "Распространяется под лицензией GNU GPL v3.\n\n"
+            "Ядро — Xray-core (https://github.com/XTLS/Xray-core), "
+            "распространяется под своей лицензией.\n\n"
+            "Полный текст лицензии см. в файле LICENSE в каталоге с программой."
+        )
+        scrolled.set_child(text)
+        toolbar.set_content(scrolled)
+        dialog.set_child(toolbar)
+        dialog.present(self)
+
+    def _show_legal(self) -> None:
+        try:
+            Gio.AppInfo.launch_default_for_uri("https://github.com/linuxwaffIen/dma2ray", None)
+        except GLib.Error as exc:
+            self._toast(f"Не удалось открыть сайт: {exc.message}")
 
     # ------------------------------------------------------------------ whatsnew
     def _whatsnew_dialog(self) -> None:
