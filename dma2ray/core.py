@@ -16,6 +16,9 @@ from .config import build_config, is_ip
 from .state import Profile, Store
 from .vless import VlessError, parse_vless
 
+SYSTEM_DIR = Path("/usr/libexec/dma2ray")
+SYSTEM_HELPER = SYSTEM_DIR / "dma2ray-helper"
+SYSTEM_XRAY = SYSTEM_DIR / "xray"
 
 class CoreError(RuntimeError):
     pass
@@ -296,6 +299,12 @@ class CoreManager:
         thread.start()
 
     def _ensure_helper(self, xray: Path) -> None:
+        use_system = (
+            os.geteuid() != 0 and SYSTEM_HELPER.is_file() and SYSTEM_XRAY.is_file()
+        )
+        if use_system:
+            xray = SYSTEM_XRAY  # root запускает только свою копию ядра
+
         key = (str(xray), str(paths.CONFIG_FILE), str(paths.LOG_FILE))
         if self._helper is not None and self._helper_key == key:
             try:
@@ -311,47 +320,27 @@ class CoreManager:
         except FileNotFoundError:
             pass
 
+        args = [
+            "--socket", str(paths.PRIV_SOCKET),
+            "--xray", str(xray),
+            "--config", str(paths.CONFIG_FILE),
+            "--log", str(paths.LOG_FILE),
+            "--uid", str(os.getuid()),
+            "--gid", str(os.getgid()),
+        ]
         if os.geteuid() == 0:
-            command = [
-                paths.python_bin(),
-                str(paths.PRIV_SCRIPT),
-                "--socket",
-                str(paths.PRIV_SOCKET),
-                "--xray",
-                str(xray),
-                "--config",
-                str(paths.CONFIG_FILE),
-                "--log",
-                str(paths.LOG_FILE),
-                "--uid",
-                str(os.getuid()),
-                "--gid",
-                str(os.getgid()),
-            ]
+            command = [paths.python_bin(), str(paths.PRIV_SCRIPT), *args]
         else:
             pkexec = shutil.which("pkexec")
             if not pkexec:
                 raise CoreError(
                     "Для TUN нужен pkexec (polkit). Установите polkit или запустите приложение от root."
                 )
-            command = [
-                pkexec,
-                paths.python_bin(),
-                str(paths.PRIV_SCRIPT),
-                "--socket",
-                str(paths.PRIV_SOCKET),
-                "--xray",
-                str(xray),
-                "--config",
-                str(paths.CONFIG_FILE),
-                "--log",
-                str(paths.LOG_FILE),
-                "--uid",
-                str(os.getuid()),
-                "--gid",
-                str(os.getgid()),
-            ]
-
+            if use_system:
+                command = [pkexec, str(SYSTEM_HELPER), *args]
+            else:
+                # Старый путь: сработает, но окно пароля будет общим.
+                command = [pkexec, paths.python_bin(), str(paths.PRIV_SCRIPT), *args]
         helper_log = paths.CACHE_DIR / "helper.log"
         log_handle = helper_log.open("ab", buffering=0)
         try:
