@@ -7,9 +7,23 @@ on:
 
 jobs:
   release:
-    name: Создание релиза
-    runs-on: ubuntu-latest
+    name: Сборка и релиз ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-latest
+            deb_arch: amd64
+            pkg_arch: amd64
+            apk_arch: x86_64
+          - arch: aarch64
+            os: ubuntu-latest-arm64
+            deb_arch: arm64
+            pkg_arch: aarch64
+            apk_arch: aarch64
     steps:
       - name: Checkout репозитория
         uses: actions/checkout@v4
@@ -51,17 +65,19 @@ jobs:
           pip install --upgrade pip
           pip install nuitka patchelf
 
-      - name: Сборка бинарника (Nuitka)
+      - name: Сборка бинарника (Nuitka, ${{ matrix.arch }})
         run: |
           chmod +x build.sh
           ./build.sh
 
-      - name: Сборка deb-пакета
+      - name: Подготовка файлов пакета
         run: |
           set -e
           BIN="dist/dma2ray.dist/dma2ray"
           DEB_STAGE="deb_stage"
-          rm -rf "$DEB_STAGE"
+          ARCH_STAGE="arch_stage"
+          APK_STAGE="apk_stage"
+          rm -rf "$DEB_STAGE" "$ARCH_STAGE" "$APK_STAGE" 2>/dev/null || true
           mkdir -p "$DEB_STAGE/usr/usr/lib/dma2ray/app"
           mkdir -p "$DEB_STAGE/usr/usr/bin"
           mkdir -p "$DEB_STAGE/usr/usr/share/icons/hicolor/scalable/apps"
@@ -74,26 +90,10 @@ jobs:
           cp -a LICENSE README.md "$DEB_STAGE/usr/usr/lib/dma2ray/"
           cp -a dist/dma2ray.dist/helpers "$DEB_STAGE/usr/usr/lib/dma2ray/app/helpers"
           cp -a dist/dma2ray.dist/girepository "$DEB_STAGE/usr/usr/lib/dma2ray/app/girepository"
-          cp -a dist/dma2ray.dist/*.so dist/dma2ray.dist/_*.so dist/dma2ray.dist/array.so dist/dma2ray.dist/zlib.so dist/dma2ray.dist/unicodedata.so dist/dma2ray.dist/select.so dist/dma2ray.dist/pyexpat.so dist/dma2ray.dist/mmap.so dist/dma2ray.dist/math.so dist/dma2ray.dist/grp.so dist/dma2ray.dist/binascii.so dist/dma2ray.dist/_zstd.so dist/dma2ray.dist/_uuid.so dist/dma2ray.dist/_struct.so dist/dma2ray.dist/_statistics.so dist/dma2ray.dist/_ssl.so dist/dma2ray.dist/_socket.so dist/dma2ray.dist/_sha3.so dist/dma2ray.dist/_sha2.so dist/dma2ray.dist/_sha1.so dist/dma2ray.dist/_random.so dist/dma2ray.dist/_queue.so dist/dma2ray.dist/_posixsubprocess.so dist/dma2ray.dist/_posixshmem.so dist/dma2ray.dist/_pickle.so dist/dma2ray.dist/_multiprocessing.so dist/dma2ray.dist/_multibytecodec.so dist/dma2ray.dist/_md5.so dist/dma2ray.dist/_lzma.so dist/dma2ray.dist/_interpreters.so dist/dma2ray.dist/_interpqueues.so dist/dma2ray.dist/_hmac.so dist/dma2ray.dist/_heapq.so dist/dma2ray.dist/_hashlib.so dist/dma2ray.dist/_decimal.so dist/dma2ray.dist/_ctypes.so dist/dma2ray.dist/_csv.so dist/dma2ray.dist/_codecs_tw.so dist/dma2ray.dist/_codecs_kr.so dist/dma2ray.dist/_codecs_jp.so dist/dma2ray.dist/_codecs_iso2022.so dist/dma2ray.dist/_codecs_hk.so dist/dma2ray.dist/_codecs_cn.so dist/dma2ray.dist/_bz2.so dist/dma2ray.dist/_blake2.so dist/dma2ray.dist/_asyncio.so dist/dma2ray.dist/libpython3.14.so.1.0 dist/dma2ray.dist/libexpat.so.1 dist/dma2ray.dist/libuuid.so.1 dist/dma2ray.dist/libssl.so.3 dist/dma2ray.dist/liblzma.so.5 dist/dma2ray.dist/libbrotlicommon.so.1 dist/dma2ray.dist/libzstd.so.1 dist/dma2ray.dist/libbrotlidec.so.1 dist/dma2ray.dist/libbrotlienc.so.1 dist/dma2ray.dist/libcrypto.so.3 dist/dma2ray.dist/libmpdec.so.4 dist/dma2ray.dist/libffi.so.8 dist/dma2ray.dist/libbz2.so.1.0 "$DEB_STAGE/usr/usr/lib/dma2ray/app/" 2>/dev/null || true
-          mkdir -p "$DEB_STAGE/DEBIAN"
-          cat > "$DEB_STAGE/DEBIAN/control" <<'EOF'
-Package: dma2ray
-Version: 0.2.0-1
-Section: net
-Priority: optional
-Architecture: amd64
-Maintainer: Dma2ray contributors <linuxwaffIen@users.noreply.github.com>
-Description: Dma2ray - VLESS client for Linux (GTK4/libadwaita, Xray-core)
- Homepage: https://github.com/linuxwaffIen/dma2ray
-EOF
-          dpkg-deb --build "$DEB_STAGE" dma2ray_0.2.0-1_amd64.deb
+          cp -a dist/dma2ray.dist/*.so "$DEB_STAGE/usr/usr/lib/dma2ray/app/" 2>/dev/null || true
+          cp -a dist/dma2ray.dist/_*.so "$DEB_STAGE/usr/usr/lib/dma2ray/app/" 2>/dev/null || true
+          cp -a dist/dma2ray.dist/array.so dist/dma2ray.dist/zlib.so dist/dma2ray.dist/unicodedata.so dist/dma2ray.dist/select.so dist/dma2ray.dist/pyexpat.so dist/dma2ray.dist/mmap.so dist/dma2ray.dist/math.so dist/dma2ray.dist/grp.so dist/dma2ray.dist/binascii.so dist/dma2ray.dist/libpython3.14.so.1.0 dist/dma2ray.dist/libexpat.so.1 dist/dma2ray.dist/libuuid.so.1 dist/dma2ray.dist/libssl.so.3 dist/dma2ray.dist/liblzma.so.5 dist/dma2ray.dist/libbrotlicommon.so.1 dist/dma2ray.dist/libzstd.so.1 dist/dma2ray.dist/libbrotlidec.so.1 dist/dma2ray.dist/libbrotlienc.so.1 dist/dma2ray.dist/libcrypto.so.3 dist/dma2ray.dist/libmpdec.so.4 dist/dma2ray.dist/libffi.so.8 dist/dma2ray.dist/libbz2.so.1.0 "$DEB_STAGE/usr/usr/lib/dma2ray/app/" 2>/dev/null || true
 
-      - name: Сборка Arch пакета (.pkg.tar.zst)
-        run: |
-          set -e
-          BIN="dist/dma2ray.dist/dma2ray"
-          ARCH_STAGE="arch_stage"
-          rm -rf "$ARCH_STAGE"
           mkdir -p "$ARCH_STAGE/usr/lib/dma2ray/app"
           mkdir -p "$ARCH_STAGE/usr/bin"
           mkdir -p "$ARCH_STAGE/usr/share/icons/hicolor/scalable/apps"
@@ -106,24 +106,10 @@ EOF
           cp -a LICENSE README.md "$ARCH_STAGE/usr/lib/dma2ray/"
           cp -a dist/dma2ray.dist/helpers "$ARCH_STAGE/usr/lib/dma2ray/app/helpers"
           cp -a dist/dma2ray.dist/girepository "$ARCH_STAGE/usr/lib/dma2ray/app/girepository"
-          cp -a dist/dma2ray.dist/*.so dist/dma2ray.dist/_*.so dist/dma2ray.dist/array.so dist/dma2ray.dist/zlib.so dist/dma2ray.dist/unicodedata.so dist/dma2ray.dist/select.so dist/dma2ray.dist/pyexpat.so dist/dma2ray.dist/mmap.so dist/dma2ray.dist/math.so dist/dma2ray.dist/grp.so dist/dma2ray.dist/binascii.so dist/dma2ray.dist/_zstd.so dist/dma2ray.dist/_uuid.so dist/dma2ray.dist/_struct.so dist/dma2ray.dist/_statistics.so dist/dma2ray.dist/_ssl.so dist/dma2ray.dist/_socket.so dist/dma2ray.dist/_sha3.so dist/dma2ray.dist/_sha2.so dist/dma2ray.dist/_sha1.so dist/dma2ray.dist/_random.so dist/dma2ray.dist/_queue.so dist/dma2ray.dist/_posixsubprocess.so dist/dma2ray.dist/_posixshmem.so dist/dma2ray.dist/_pickle.so dist/dma2ray.dist/_multiprocessing.so dist/dma2ray.dist/_multibytecodec.so dist/dma2ray.dist/_md5.so dist/dma2ray.dist/_lzma.so dist/dma2ray.dist/_interpreters.so dist/dma2ray.dist/_interpqueues.so dist/dma2ray.dist/_hmac.so dist/dma2ray.dist/_heapq.so dist/dma2ray.dist/_hashlib.so dist/dma2ray.dist/_decimal.so dist/dma2ray.dist/_ctypes.so dist/dma2ray.dist/_csv.so dist/dma2ray.dist/_codecs_tw.so dist/dma2ray.dist/_codecs_kr.so dist/dma2ray.dist/_codecs_jp.so dist/dma2ray.dist/_codecs_iso2022.so dist/dma2ray.dist/_codecs_hk.so dist/dma2ray.dist/_codecs_cn.so dist/dma2ray.dist/_bz2.so dist/dma2ray.dist/_blake2.so dist/dma2ray.dist/_asyncio.so dist/dma2ray.dist/libpython3.14.so.1.0 dist/dma2ray.dist/libexpat.so.1 dist/dma2ray.dist/libuuid.so.1 dist/dma2ray.dist/libssl.so.3 dist/dma2ray.dist/liblzma.so.5 dist/dma2ray.dist/libbrotlicommon.so.1 dist/dma2ray.dist/libzstd.so.1 dist/dma2ray.dist/libbrotlidec.so.1 dist/dma2ray.dist/libbrotlienc.so.1 dist/dma2ray.dist/libcrypto.so.3 dist/dma2ray.dist/libmpdec.so.4 dist/dma2ray.dist/libffi.so.8 dist/dma2ray.dist/libbz2.so.1.0 "$ARCH_STAGE/usr/lib/dma2ray/app/" 2>/dev/null || true
-          cat > "$ARCH_STAGE/.PKGINFO" <<'EOF'
-pkgname = dma2ray
-pkgver = 0.2.0-1
-pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, Xray-core)
-url = https://github.com/linuxwaffIen/dma2ray
-arch = x86_64
-license = GPL-3.0-only
-size = 14484153
-EOF
-          bsdtar -cf - -C "$ARCH_STAGE" usr .PKGINFO | zstd -19 -o dma2ray-0.2.0-1-x86_64.pkg.tar.zst
+          cp -a dist/dma2ray.dist/*.so "$ARCH_STAGE/usr/lib/dma2ray/app/" 2>/dev/null || true
+          cp -a dist/dma2ray.dist/_*.so "$ARCH_STAGE/usr/lib/dma2ray/app/" 2>/dev/null || true
+          cp -a dist/dma2ray.dist/array.so dist/dma2ray.dist/zlib.so dist/dma2ray.dist/unicodedata.so dist/dma2ray.dist/select.so dist/dma2ray.dist/pyexpat.so dist/dma2ray.dist/mmap.so dist/dma2ray.dist/math.so dist/dma2ray.dist/grp.so dist/dma2ray.dist/binascii.so dist/dma2ray.dist/libpython3.14.so.1.0 dist/dma2ray.dist/libexpat.so.1 dist/dma2ray.dist/libuuid.so.1 dist/dma2ray.dist/libssl.so.3 dist/dma2ray.dist/liblzma.so.5 dist/dma2ray.dist/libbrotlicommon.so.1 dist/dma2ray.dist/libzstd.so.1 dist/dma2ray.dist/libbrotlidec.so.1 dist/dma2ray.dist/libbrotlienc.so.1 dist/dma2ray.dist/libcrypto.so.3 dist/dma2ray.dist/libmpdec.so.4 dist/dma2ray.dist/libffi.so.8 dist/dma2ray.dist/libbz2.so.1.0 "$ARCH_STAGE/usr/lib/dma2ray/app/" 2>/dev/null || true
 
-      - name: Сборка Alpine пакета (.apk)
-        run: |
-          set -e
-          BIN="dist/dma2ray.dist/dma2ray"
-          APK_STAGE="apk_stage"
-          rm -rf "$APK_STAGE"
           mkdir -p "$APK_STAGE/usr/usr/lib/dma2ray/app"
           mkdir -p "$APK_STAGE/usr/usr/bin"
           mkdir -p "$APK_STAGE/usr/usr/share/icons/hicolor/scalable/apps"
@@ -136,19 +122,58 @@ EOF
           cp -a LICENSE README.md "$APK_STAGE/usr/usr/lib/dma2ray/"
           cp -a dist/dma2ray.dist/helpers "$APK_STAGE/usr/usr/lib/dma2ray/app/helpers"
           cp -a dist/dma2ray.dist/girepository "$APK_STAGE/usr/usr/lib/dma2ray/app/girepository"
-          cp -a dist/dma2ray.dist/*.so dist/dma2ray.dist/_*.so dist/dma2ray.dist/array.so dist/dma2ray.dist/zlib.so dist/dma2ray.dist/unicodedata.so dist/dma2ray.dist/select.so dist/dma2ray.dist/pyexpat.so dist/dma2ray.dist/mmap.so dist/dma2ray.dist/math.so dist/dma2ray.dist/grp.so dist/dma2ray.dist/binascii.so dist/dma2ray.dist/_zstd.so dist/dma2ray.dist/_uuid.so dist/dma2ray.dist/_struct.so dist/dma2ray.dist/_statistics.so dist/dma2ray.dist/_ssl.so dist/dma2ray.dist/_socket.so dist/dma2ray.dist/_sha3.so dist/dma2ray.dist/_sha2.so dist/dma2ray.dist/_sha1.so dist/dma2ray.dist/_random.so dist/dma2ray.dist/_queue.so dist/dma2ray.dist/_posixsubprocess.so dist/dma2ray.dist/_posixshmem.so dist/dma2ray.dist/_pickle.so dist/dma2ray.dist/_multiprocessing.so dist/dma2ray.dist/_multibytecodec.so dist/dma2ray.dist/_md5.so dist/dma2ray.dist/_lzma.so dist/dma2ray.dist/_interpreters.so dist/dma2ray.dist/_interpqueues.so dist/dma2ray.dist/_hmac.so dist/dma2ray.dist/_heapq.so dist/dma2ray.dist/_hashlib.so dist/dma2ray.dist/_decimal.so dist/dma2ray.dist/_ctypes.so dist/dma2ray.dist/_csv.so dist/dma2ray.dist/_codecs_tw.so dist/dma2ray.dist/_codecs_kr.so dist/dma2ray.dist/_codecs_jp.so dist/dma2ray.dist/_codecs_iso2022.so dist/dma2ray.dist/_codecs_hk.so dist/dma2ray.dist/_codecs_cn.so dist/dma2ray.dist/_bz2.so dist/dma2ray.dist/_blake2.so dist/dma2ray.dist/_asyncio.so dist/dma2ray.dist/libpython3.14.so.1.0 dist/dma2ray.dist/libexpat.so.1 dist/dma2ray.dist/libuuid.so.1 dist/dma2ray.dist/libssl.so.3 dist/dma2ray.dist/liblzma.so.5 dist/dma2ray.dist/libbrotlicommon.so.1 dist/dma2ray.dist/libzstd.so.1 dist/dma2ray.dist/libbrotlidec.so.1 dist/dma2ray.dist/libbrotlienc.so.1 dist/dma2ray.dist/libcrypto.so.3 dist/dma2ray.dist/libmpdec.so.4 dist/dma2ray.dist/libffi.so.8 dist/dma2ray.dist/libbz2.so.1.0 "$APK_STAGE/usr/usr/lib/dma2ray/app/" 2>/dev/null || true
+          cp -a dist/dma2ray.dist/*.so "$APK_STAGE/usr/usr/lib/dma2ray/app/" 2>/dev/null || true
+          cp -a dist/dma2ray.dist/_*.so "$APK_STAGE/usr/usr/lib/dma2ray/app/" 2>/dev/null || true
+          cp -a dist/dma2ray.dist/array.so dist/dma2ray.dist/zlib.so dist/dma2ray.dist/unicodedata.so dist/dma2ray.dist/select.so dist/dma2ray.dist/pyexpat.so dist/dma2ray.dist/mmap.so dist/dma2ray.dist/math.so dist/dma2ray.dist/grp.so dist/dma2ray.dist/binascii.so dist/dma2ray.dist/libpython3.14.so.1.0 dist/dma2ray.dist/libexpat.so.1 dist/dma2ray.dist/libuuid.so.1 dist/dma2ray.dist/libssl.so.3 dist/dma2ray.dist/liblzma.so.5 dist/dma2ray.dist/libbrotlicommon.so.1 dist/dma2ray.dist/libzstd.so.1 dist/dma2ray.dist/libbrotlidec.so.1 dist/dma2ray.dist/libbrotlienc.so.1 dist/dma2ray.dist/libcrypto.so.3 dist/dma2ray.dist/libmpdec.so.4 dist/dma2ray.dist/libffi.so.8 dist/dma2ray.dist/libbz2.so.1.0 "$APK_STAGE/usr/usr/lib/dma2ray/app/" 2>/dev/null || true
+
+      - name: Сборка deb-пакета
+        run: |
+          set -e
+          DEB_STAGE="deb_stage"
+          mkdir -p "$DEB_STAGE/DEBIAN"
+          cat > "$DEB_STAGE/DEBIAN/control" <<EOF
+Package: dma2ray
+Version: 0.2.0-1
+Section: net
+Priority: optional
+Architecture: ${{ matrix.deb_arch }}
+Maintainer: Dma2ray contributors <linuxwaffIen@users.noreply.github.com>
+Description: Dma2ray - VLESS client for Linux (GTK4/libadwaita, Xray-core)
+ Homepage: https://github.com/linuxwaffIen/dma2ray
+EOF
+          dpkg-deb --build "$DEB_STAGE" dma2ray_0.2.0-1_${{ matrix.deb_arch }}.deb
+
+      - name: Сборка Arch пакета (.pkg.tar.zst)
+        run: |
+          set -e
+          ARCH_STAGE="arch_stage"
+          cat > "$ARCH_STAGE/.PKGINFO" <<EOF
+pkgname = dma2ray
+pkgver = 0.2.0-1
+pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, Xray-core)
+url = https://github.com/linuxwaffIen/dma2ray
+arch = ${{ matrix.pkg_arch }}
+license = GPL-3.0-only
+size = 14484153
+EOF
+          bsdtar -cf - -C "$ARCH_STAGE" usr .PKGINFO | zstd -19 -o dma2ray-0.2.0-1-${{ matrix.pkg_arch }}.pkg.tar.zst
+
+      - name: Сборка Alpine пакета (.apk)
+        run: |
+          set -e
+          APK_STAGE="apk_stage"
           SIZE=$(stat -c%s "$APK_STAGE/usr/usr/lib/dma2ray/app/dma2ray")
           cat > "$APK_STAGE/.PKGINFO" <<EOF
 pkgname = dma2ray
 pkgver = 0.2.0-r1
 pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, Xray-core)
 url = https://github.com/linuxwaffIen/dma2ray
-arch = x86_64
+arch = ${{ matrix.apk_arch }}
 license = GPL-3.0-only
 size = $SIZE
 EOF
           tar --format=ustar -czf "$APK_STAGE/pkg.tar" -C "$APK_STAGE" .PKGINFO usr
-          gzip -9 -c "$APK_STAGE/pkg.tar" > dma2ray-0.2.0-r1.apk
+          gzip -9 -c "$APK_STAGE/pkg.tar" > dma2ray-0.2.0-r1-${{ matrix.apk_arch }}.apk
           rm -f "$APK_STAGE/pkg.tar"
 
       - name: Создание GitHub релиза
@@ -161,24 +186,39 @@ EOF
 
             ## Установка
 
-            ### Arch Linux
+            ### Arch Linux (x86_64)
             ```bash
             sudo pacman -U dma2ray-0.2.0-1-x86_64.pkg.tar.zst
             ```
 
-            ### Debian/Ubuntu
+            ### Arch Linux (aarch64)
+            ```bash
+            sudo pacman -U dma2ray-0.2.0-1-aarch64.pkg.tar.zst
+            ```
+
+            ### Debian/Ubuntu (amd64)
             ```bash
             sudo dpkg -i dma2ray_0.2.0-1_amd64.deb
             ```
 
-            ### Alpine
+            ### Debian/Ubuntu (arm64)
             ```bash
-            sudo apk add dma2ray-0.2.0-r1.apk
+            sudo dpkg -i dma2ray_0.2.0-1_arm64.deb
+            ```
+
+            ### Alpine (x86_64)
+            ```bash
+            sudo apk add dma2ray-0.2.0-r1-x86_64.apk
+            ```
+
+            ### Alpine (aarch64)
+            ```bash
+            sudo apk add dma2ray-0.2.0-r1-aarch64.apk
             ```
           files: |
-            dma2ray_0.2.0-1_amd64.deb
-            dma2ray-0.2.0-1-x86_64.pkg.tar.zst
-            dma2ray-0.2.0-r1.apk
+            dma2ray_0.2.0-1_${{ matrix.deb_arch }}.deb
+            dma2ray-0.2.0-1-${{ matrix.pkg_arch }}.pkg.tar.zst
+            dma2ray-0.2.0-r1-${{ matrix.apk_arch }}.apk
           draft: false
           prerelease: false
         env:
