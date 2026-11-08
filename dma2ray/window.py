@@ -1742,7 +1742,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ kernels
     def _show_kernels_dialog(self) -> None:
-        """Диалог «Ядро»: вкладка ядер для архитектуры пользователя с кнопкой «Скачать»."""
+        """Диалог «Ядро»: ядра Xray и Amnezia Xray для архитектуры пользователя."""
         machine = current_arch()
         dialog = Adw.Dialog()
         dialog.set_title("Ядро")
@@ -1763,46 +1763,46 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled.set_vexpand(True)
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
-        core_tab_view = Adw.TabView()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_margin_start(24)
+        box.set_margin_end(24)
+        box.set_margin_top(24)
+        box.set_margin_bottom(24)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_valign(Gtk.Align.CENTER)
+
         for kernel_type, title in (("xray", "Ядро Xray"), ("amnezia-xray", "Ядро Amnezia Xray")):
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             asset = None
             try:
                 asset = asset_name(kernel_type, machine)
             except RuntimeError:
                 asset = None
-            core_row = Adw.ActionRow(
+
+            row = Adw.ActionRow(
                 title=f"{title} ({machine})",
                 subtitle=(f"Сборка {asset}" if asset else f"Для {machine} недоступно"),
             )
-            core_install_button = Gtk.Button(label="Скачать")
+            btn = Gtk.Button(label="Скачать")
             supported = machine in SUPPORTED_ARCHS and asset is not None
             if supported:
-                core_install_button.add_css_class("suggested-action")
+                btn.add_css_class("suggested-action")
             else:
-                core_install_button.add_css_class("flat")
-                core_install_button.set_sensitive(False)
-            core_install_button.set_tooltip_text(
-                f"Скачать {title} для архитектуры {machine}"
-            )
-            core_install_button.connect(
+                btn.add_css_class("flat")
+                btn.set_sensitive(False)
+            btn.set_tooltip_text(f"Скачать {title} для архитектуры {machine}")
+            btn.connect(
                 "clicked",
-                lambda *_, a=machine, b=core_install_button, r=core_row, kt=kernel_type: self._install_core_for_arch(
+                lambda *_, a=machine, b=btn, r=row, kt=kernel_type: self._install_core_for_arch(
                     a, b, r, kt
                 ),
             )
-            core_row.add_suffix(core_install_button)
-            box.append(core_row)
+            row.add_suffix(btn)
+            box.append(row)
 
             separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
             box.append(separator)
 
-            core_page = core_tab_view.add_page(box)
-            core_page.set_title(f"{title} · {machine}")
-            self._core_tabs[f"{machine}:{kernel_type}"] = core_row
-            self._core_buttons[f"{machine}:{kernel_type}"] = core_install_button
-
-        scrolled.set_child(core_tab_view)
+        scrolled.set_child(box)
         toolbar.set_content(scrolled)
         dialog.set_child(toolbar)
         dialog.present(self)
