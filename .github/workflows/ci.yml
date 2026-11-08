@@ -84,9 +84,7 @@ jobs:
             xz-utils \
             zstd \
             bsdtar \
-            makepkg \
-            fakeroot \
-            archlinux-keyring
+            fakeroot
 
       - name: Установка Nuitka и patchelf
         run: |
