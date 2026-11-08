@@ -7,23 +7,9 @@ on:
 
 jobs:
   release:
-    name: Сборка и релиз ${{ matrix.arch }}
-    runs-on: ${{ matrix.os }}
+    name: Создание релиза
+    runs-on: ubuntu-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            os: ubuntu-latest
-            deb_arch: amd64
-            pkg_arch: amd64
-            apk_arch: x86_64
-          - arch: aarch64
-            os: ubuntu-latest-arm64
-            deb_arch: arm64
-            pkg_arch: aarch64
-            apk_arch: aarch64
     steps:
       - name: Checkout репозитория
         uses: actions/checkout@v4
@@ -65,7 +51,7 @@ jobs:
           pip install --upgrade pip
           pip install nuitka patchelf
 
-      - name: Сборка бинарника (Nuitka, ${{ matrix.arch }})
+      - name: Сборка бинарника (Nuitka)
         run: |
           chmod +x build.sh
           ./build.sh
@@ -136,12 +122,12 @@ Package: dma2ray
 Version: 0.2.0-1
 Section: net
 Priority: optional
-Architecture: ${{ matrix.deb_arch }}
+Architecture: amd64
 Maintainer: Dma2ray contributors <linuxwaffIen@users.noreply.github.com>
 Description: Dma2ray - VLESS client for Linux (GTK4/libadwaita, Xray-core)
  Homepage: https://github.com/linuxwaffIen/dma2ray
 EOF
-          dpkg-deb --build "$DEB_STAGE" dma2ray_0.2.0-1_${{ matrix.deb_arch }}.deb
+          dpkg-deb --build "$DEB_STAGE" dma2ray_0.2.0-1_amd64.deb
 
       - name: Сборка Arch пакета (.pkg.tar.zst)
         run: |
@@ -152,11 +138,11 @@ pkgname = dma2ray
 pkgver = 0.2.0-1
 pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, Xray-core)
 url = https://github.com/linuxwaffIen/dma2ray
-arch = ${{ matrix.pkg_arch }}
+arch = x86_64
 license = GPL-3.0-only
 size = 14484153
 EOF
-          bsdtar -cf - -C "$ARCH_STAGE" usr .PKGINFO | zstd -19 -o dma2ray-0.2.0-1-${{ matrix.pkg_arch }}.pkg.tar.zst
+          bsdtar -cf - -C "$ARCH_STAGE" usr .PKGINFO | zstd -19 -o dma2ray-0.2.0-1-x86_64.pkg.tar.zst
 
       - name: Сборка Alpine пакета (.apk)
         run: |
@@ -168,12 +154,12 @@ pkgname = dma2ray
 pkgver = 0.2.0-r1
 pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, Xray-core)
 url = https://github.com/linuxwaffIen/dma2ray
-arch = ${{ matrix.apk_arch }}
+arch = x86_64
 license = GPL-3.0-only
 size = $SIZE
 EOF
           tar --format=ustar -czf "$APK_STAGE/pkg.tar" -C "$APK_STAGE" .PKGINFO usr
-          gzip -9 -c "$APK_STAGE/pkg.tar" > dma2ray-0.2.0-r1-${{ matrix.apk_arch }}.apk
+          gzip -9 -c "$APK_STAGE/pkg.tar" > dma2ray-0.2.0-r1-x86_64.apk
           rm -f "$APK_STAGE/pkg.tar"
 
       - name: Создание GitHub релиза
@@ -191,34 +177,19 @@ EOF
             sudo pacman -U dma2ray-0.2.0-1-x86_64.pkg.tar.zst
             ```
 
-            ### Arch Linux (aarch64)
-            ```bash
-            sudo pacman -U dma2ray-0.2.0-1-aarch64.pkg.tar.zst
-            ```
-
             ### Debian/Ubuntu (amd64)
             ```bash
             sudo dpkg -i dma2ray_0.2.0-1_amd64.deb
-            ```
-
-            ### Debian/Ubuntu (arm64)
-            ```bash
-            sudo dpkg -i dma2ray_0.2.0-1_arm64.deb
             ```
 
             ### Alpine (x86_64)
             ```bash
             sudo apk add dma2ray-0.2.0-r1-x86_64.apk
             ```
-
-            ### Alpine (aarch64)
-            ```bash
-            sudo apk add dma2ray-0.2.0-r1-aarch64.apk
-            ```
           files: |
-            dma2ray_0.2.0-1_${{ matrix.deb_arch }}.deb
-            dma2ray-0.2.0-1-${{ matrix.pkg_arch }}.pkg.tar.zst
-            dma2ray-0.2.0-r1-${{ matrix.apk_arch }}.apk
+            dma2ray_0.2.0-1_amd64.deb
+            dma2ray-0.2.0-1-x86_64.pkg.tar.zst
+            dma2ray-0.2.0-r1-x86_64.apk
           draft: false
           prerelease: false
         env:
