@@ -32,16 +32,7 @@ jobs:
             python3-gi-cairo \
             libx11-dev \
             libglib2.0-dev \
-            libjson-c-dev \
-            dpkg-dev \
-            binutils \
-            coreutils \
-            tar \
-            gzip \
-            xz-utils \
-            zstd \
-            bsdtar \
-            fakeroot
+            libjson-c-dev
 
       - name: Установка Nuitka и patchelf
         run: |
