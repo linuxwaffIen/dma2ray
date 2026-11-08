@@ -1740,10 +1740,10 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ kernels
     def _show_kernels_dialog(self) -> None:
-        """Диалог «Ядро»: ядра Xray и Amnezia Xray для архитектуры пользователя."""
+        """Диалог «Ядра»: ядра Xray и Amnezia Xray для архитектуры пользователя."""
         machine = current_arch()
         dialog = Adw.Dialog()
-        dialog.set_title("Ядро")
+        dialog.set_title("Ядра")
         dialog.set_content_width(700)
         dialog.set_content_height(480)
 
@@ -1751,7 +1751,7 @@ class MainWindow(Adw.ApplicationWindow):
         header = Adw.HeaderBar()
         header.set_title_widget(
             Adw.WindowTitle(
-                title="Ядро",
+                title="Ядра",
                 subtitle=f"{machine} · версия {paths.VERSION}",
             )
         )
@@ -1762,8 +1762,7 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
         group = Adw.PreferencesGroup()
-        group.set_title("Ядро")
-        group.set_description("Выберите ядро для скачивания под вашу архитектуру")
+        group.set_title("Ядра")
 
         for kernel_type, title in (("xray", "Ядро Xray"), ("amnezia-xray", "Ядро Amnezia Xray")):
             asset = None
@@ -1774,7 +1773,6 @@ class MainWindow(Adw.ApplicationWindow):
 
             row = Adw.ActionRow(
                 title=f"{title} ({machine})",
-                subtitle=(f"Сборка {asset}" if asset else f"Для {machine} недоступно"),
             )
             btn = Gtk.Button(label="Скачать")
             supported = machine in SUPPORTED_ARCHS and asset is not None
