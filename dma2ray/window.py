@@ -75,8 +75,17 @@ viewswitcherbar,
 actionbar {
   background-color: #14386e;
 }
+viewswitcherbar {
+  min-height: 56px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
 viewswitcherbar button:checked {
   background-color: #2f6bd8;
+}
+.dialog button, window button {
+  min-width: 130px;
+  min-height: 36px;
 }
 """
 
@@ -1727,98 +1736,21 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:
-        """Диалог «О программе» (как в гите): кнопки Подробности / Правовые сведения / Что нового — в столбик."""
-        dialog = Adw.Dialog()
-        dialog.set_title("О программе")
-        dialog.set_content_width(560)
-        dialog.set_content_height(480)
-
-        toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
-        header.set_title_widget(
-            Adw.WindowTitle(
-                title="О программе",
-                subtitle=f"Версия {paths.VERSION}",
-            )
-        )
-        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
-        close.add_css_class("flat")
-        close.set_tooltip_text("Закрыть")
-        close.connect("clicked", lambda *_: dialog.close())
-        header.pack_end(close)
-        toolbar.add_top_bar(header)
-
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_vexpand(True)
-        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        box.set_margin_start(24)
-        box.set_margin_end(24)
-        box.set_margin_top(24)
-        box.set_margin_bottom(20)
-        box.set_halign(Gtk.Align.CENTER)
-        box.set_valign(Gtk.Align.CENTER)
-
-        # Иконка приложения
-        icon = Gtk.Image.new_from_icon_name(paths.ICON_NAME)
-        icon.set_pixel_size(64)
-        box.append(icon)
-
-        # Название
-        title = Gtk.Label(label=paths.APP_TITLE)
-        title.add_css_class("title-1")
-        box.append(title)
-
-        # Версия
-        version = Gtk.Label(label=f"Версия {paths.VERSION}")
-        version.add_css_class("caption")
-        box.append(version)
-
-        # Разработчик
-        dev = Gtk.Label(label="Dma2ray contributors")
-        dev.add_css_class("caption")
-        box.append(dev)
-
-        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-        box.append(sep)
-
-        # Описание (как в AboutDialog)
-        desc = Gtk.Label(
-            label=(
+        """Диалог «О программе» (Adw.AboutDialog): версия + 2 кнопки."""
+        dialog = Adw.AboutDialog(
+            application_name=paths.APP_TITLE,
+            application_icon=paths.ICON_NAME,
+            developer_name="Dma2ray contributors",
+            version=paths.VERSION,
+            comments=(
                 "Клиент VLESS для Linux на GTK4/libadwaita.\n"
                 "Ядро — Xray-core, включая нативный TUN-режим.\n"
                 "Клиент создан на базе Xray — благодарности разработчику "
                 "этого ядра: https://github.com/XTLS/Xray-core"
             ),
-            justify=Gtk.Justification.CENTER,
+            website="https://github.com/XTLS/Xray-core",
+            license_type=Gtk.License.GPL_3_0_ONLY,
         )
-        desc.set_wrap(True)
-        desc.set_max_width_chars(60)
-        box.append(desc)
-
-        # Три кнопки в столбик: Подробности, Правовые сведения, Что нового — одинаковые, как в гите
-        btn_details = Gtk.Button(label="Подробности")
-        btn_details.add_css_class("flat")
-        btn_details.set_halign(Gtk.Align.CENTER)
-        btn_details.connect("clicked", lambda *_: self._show_license())
-        box.append(btn_details)
-
-        btn_legal = Gtk.Button(label="Правовые сведения")
-        btn_legal.add_css_class("flat")
-        btn_legal.set_halign(Gtk.Align.CENTER)
-        btn_legal.connect("clicked", lambda *_: self._show_legal())
-        box.append(btn_legal)
-
-        btn_whatsnew = Gtk.Button(label="Что нового")
-        btn_whatsnew.add_css_class("flat")
-        btn_whatsnew.set_halign(Gtk.Align.CENTER)
-        btn_whatsnew.connect("clicked", lambda *_: (dialog.close(), self._whatsnew_dialog()))
-        box.append(btn_whatsnew)
-
-        scrolled.set_child(box)
-        toolbar.set_content(scrolled)
-        dialog.set_child(toolbar)
         dialog.present(self)
 
     # ---------------------------------------------------------------- helpers
