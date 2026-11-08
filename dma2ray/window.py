@@ -1809,43 +1809,21 @@ class MainWindow(Adw.ApplicationWindow):
         sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         box.append(sep)
 
-        # Описание
-        desc = Gtk.Label(
-            label=(
-                "Клиент VLESS для Linux на GTK4/libadwaita.\n"
-                "Ядро — Xray-core, включая нативный TUN-режим.\n"
-                "Клиент создан на базе Xray — благодарности разработчику "
-                "этого ядра: https://github.com/XTLS/Xray-core"
-            ),
-            justify=Gtk.Justification.CENTER,
-        )
-        desc.set_wrap(True)
-        desc.set_max_width_chars(60)
-        box.append(desc)
-
-        # Кнопки внизу: Подробности, Правовые сведения, Что нового — одинаковый стиль
-        btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        btns.set_halign(Gtk.Align.CENTER)
-
+        # Три кнопки в столбик: одна под другой
         btn_details = Gtk.Button(label="Подробности")
-        btn_details.add_css_class("flat")
-        btn_details.set_tooltip_text("Показать лицензию")
+        btn_details.set_halign(Gtk.Align.CENTER)
         btn_details.connect("clicked", lambda *_: self._show_license())
+        box.append(btn_details)
 
         btn_legal = Gtk.Button(label="Правовые сведения")
-        btn_legal.add_css_class("flat")
-        btn_legal.set_tooltip_text("Открыть лицензию и сайт проекта")
+        btn_legal.set_halign(Gtk.Align.CENTER)
         btn_legal.connect("clicked", lambda *_: self._show_legal())
+        box.append(btn_legal)
 
         btn_whatsnew = Gtk.Button(label="Что нового")
-        btn_whatsnew.add_css_class("flat")
-        btn_whatsnew.set_tooltip_text("Список изменений")
+        btn_whatsnew.set_halign(Gtk.Align.CENTER)
         btn_whatsnew.connect("clicked", lambda *_: (dialog.close(), self._whatsnew_dialog()))
-
-        btns.append(btn_details)
-        btns.append(btn_legal)
-        btns.append(btn_whatsnew)
-        box.append(btns)
+        box.append(btn_whatsnew)
 
         scrolled.set_child(box)
         toolbar.set_content(scrolled)
