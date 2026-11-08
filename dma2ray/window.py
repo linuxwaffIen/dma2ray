@@ -259,6 +259,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append("Настройки", "win.settings")
         menu.append("Журнал Xray", "win.show-log")
         menu.append("О программе", "win.about")
+        menu.append("Что нового", "win.whatsnew")
         menu.append("Ядра", "win.kernels")
         menu.append("Выход", "win.quit")
         menu_button = Gtk.MenuButton()
@@ -623,6 +624,7 @@ class MainWindow(Adw.ApplicationWindow):
             "settings": lambda *_: self.view_stack.set_visible_child_name("settings"),
             "show-log": lambda *_: self._show_log(),
             "about": lambda *_: self._about_dialog(),
+            "whatsnew": lambda *_: self._whatsnew_dialog(),
             "kernels": lambda *_: self._show_kernels_dialog(),
             "quit": lambda *_: self.app.quit(),
         }
@@ -1723,7 +1725,7 @@ class MainWindow(Adw.ApplicationWindow):
                 asset = None
             row = Adw.ActionRow(
                 title=title,
-                subtitle=(f"Сборка {asset}" if asset else f"Для {arch} недоступно"),
+                subtitle="" if not asset else None,
             )
             btn = Gtk.Button(label="Скачать")
             if supported and asset:
@@ -1767,6 +1769,58 @@ class MainWindow(Adw.ApplicationWindow):
             website="https://github.com/XTLS/Xray-core",
             license_type=Gtk.License.GPL_3_0_ONLY,
         )
+        dialog.present(self)
+
+    # ------------------------------------------------------------------ whatsnew
+    def _whatsnew_dialog(self) -> None:
+        """Диалог «Что нового» со списком изменений."""
+        dialog = Adw.Dialog()
+        dialog.set_title("Что нового")
+        dialog.set_content_width(700)
+        dialog.set_content_height(560)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(
+            Adw.WindowTitle(
+                title="Что нового",
+                subtitle=f"Версия {paths.VERSION}",
+            )
+        )
+        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
+        close.add_css_class("flat")
+        close.set_tooltip_text("Закрыть")
+        close.connect("clicked", lambda *_: dialog.close())
+        header.pack_end(close)
+        toolbar.add_top_bar(header)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        text = Gtk.TextView()
+        text.set_editable(False)
+        text.set_cursor_visible(False)
+        text.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        text.set_margin_start(16)
+        text.set_margin_end(16)
+        text.set_margin_top(16)
+        text.set_margin_bottom(16)
+        buffer = text.get_buffer()
+        buffer.set_text(
+            "v0.2.1\n"
+            "\n"
+            "• Поддержка протоколов: VLESS, Trojan, Shadowsocks, VMess, Hysteria2, WireGuard, Amnezia\n"
+            "• Диалог «Ядера»: скачивание ядер Xray и Amnezia под архитектуру пользователя\n"
+            "• Кнопки ядер как столбик: одна под другой\n"
+            "• Меню «О программе» → «Что нового»: этот список изменений\n"
+            "• Убрана тема оформления — GTK4 определяет тему автоматически\n"
+            "• Синий бар #14386e и активная вкладка #2f6bd8\n"
+            "• TUN gateway с CIDR-адресом (172.19.0.1/30, fdfe:dcba:9876::1/126)\n"
+        )
+        scrolled.set_child(text)
+        toolbar.set_content(scrolled)
+        dialog.set_child(toolbar)
         dialog.present(self)
 
     # ---------------------------------------------------------------- helpers
