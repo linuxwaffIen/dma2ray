@@ -174,6 +174,43 @@ install_app() {
     echo "Ядро Xray можно скачать в «Настройках → Ядро → Скачать»"
 }
 
+[ "$(id -u)" = 0 ] || exec sudo "$0" "$@"
+XRAY=${1:?укажите путь к xray}
+PRIV=${2:?укажите путь к priv-скрипту}
+DIR=/usr/libexec/dma2ray
+PY=$(command -v python3)
+
+install -d -m 755 "$DIR"
+install -m 755 "$XRAY" "$DIR/xray"
+install -m 644 "$PRIV" "$DIR/priv.py"
+
+cat > "$DIR/dma2ray-helper" <<EOF
+#!/bin/sh
+exec $PY $DIR/priv.py "\$@"
+EOF
+chmod 755 "$DIR/dma2ray-helper"
+
+cat > /usr/share/polkit-1/actions/org.dma2ray.run-core.policy <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Dma2ray</vendor>
+  <action id="org.dma2ray.run-core">
+    <description>Запуск ядра Dma2ray в режиме ВПН</description>
+    <message>Для режима ВПН (TUN) нужны права администратора</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/dma2ray/dma2ray-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">false</annotate>
+  </action>
+</policyconfig>
+EOF
+echo "Готово"
 if [[ "$ACTION" == "uninstall" ]]; then
     uninstall
 else
