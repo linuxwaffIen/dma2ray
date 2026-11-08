@@ -1753,11 +1753,11 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:
-        """Диалог «О программе» — версия + 3 кнопки в строку."""
+        """Диалог «О программе» — версия + 3 кнопки в строку (как в AboutDialog)."""
         dialog = Adw.Dialog()
         dialog.set_title("О программе")
-        dialog.set_content_width(500)
-        dialog.set_content_height(300)
+        dialog.set_content_width(560)
+        dialog.set_content_height(340)
 
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
@@ -1778,20 +1778,45 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled.set_vexpand(True)
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.set_margin_start(24)
         box.set_margin_end(24)
         box.set_margin_top(24)
-        box.set_margin_bottom(16)
+        box.set_margin_bottom(20)
         box.set_halign(Gtk.Align.CENTER)
         box.set_valign(Gtk.Align.CENTER)
 
-        title = Gtk.Label(label=f"{paths.APP_TITLE} — версия {paths.VERSION}")
+        icon = Gtk.Image.new_from_icon_name(paths.ICON_NAME)
+        icon.set_pixel_size(64)
+        box.append(icon)
+
+        title = Gtk.Label(label=paths.APP_TITLE)
         title.add_css_class("title-1")
         box.append(title)
 
+        version = Gtk.Label(label=f"Версия {paths.VERSION}")
+        version.add_css_class("caption")
+        box.append(version)
+
+        dev = Gtk.Label(label="Dma2ray contributors")
+        dev.add_css_class("caption")
+        box.append(dev)
+
         sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         box.append(sep)
+
+        desc = Gtk.Label(
+            label=(
+                "Клиент VLESS для Linux на GTK4/libadwaita.\n"
+                "Ядро — Xray-core, включая нативный TUN-режим.\n"
+                "Клиент создан на базе Xray — благодарности разработчику "
+                "этого ядра: https://github.com/XTLS/Xray-core"
+            ),
+            justify=Gtk.Justification.CENTER,
+        )
+        desc.set_wrap(True)
+        desc.set_max_width_chars(60)
+        box.append(desc)
 
         btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         btns.set_halign(Gtk.Align.CENTER)
@@ -1814,107 +1839,6 @@ class MainWindow(Adw.ApplicationWindow):
         box.append(btns)
 
         scrolled.set_child(box)
-        toolbar.set_content(scrolled)
-        dialog.set_child(toolbar)
-        dialog.present(self)
-
-    def _show_license(self) -> None:
-        dialog = Adw.Dialog()
-        dialog.set_title("Лицензия")
-        dialog.set_content_width(700)
-        dialog.set_content_height(500)
-
-        toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
-        header.set_title_widget(
-            Adw.WindowTitle(title="Лицензия", subtitle="GNU GPL v3")
-        )
-        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
-        close.add_css_class("flat")
-        close.set_tooltip_text("Закрыть")
-        close.connect("clicked", lambda *_: dialog.close())
-        header.pack_end(close)
-        toolbar.add_top_bar(header)
-
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_vexpand(True)
-        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-
-        text = Gtk.TextView()
-        text.set_editable(False)
-        text.set_cursor_visible(False)
-        text.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        text.set_margin_start(16)
-        text.set_margin_end(16)
-        text.set_margin_top(16)
-        text.set_margin_bottom(16)
-        buffer = text.get_buffer()
-        buffer.set_text(
-            "Dma2ray — клиент VLESS для Linux (GTK4/libadwaita).\n\n"
-            "Распространяется под лицензией GNU GPL v3.\n\n"
-            "Ядро — Xray-core (https://github.com/XTLS/Xray-core), "
-            "распространяется под своей лицензией.\n\n"
-            "Полный текст лицензии см. в файле LICENSE в каталоге с программой."
-        )
-        scrolled.set_child(text)
-        toolbar.set_content(scrolled)
-        dialog.set_child(toolbar)
-        dialog.present(self)
-
-    def _show_legal(self) -> None:
-        try:
-            Gio.AppInfo.launch_default_for_uri("https://github.com/linuxwaffIen/dma2ray", None)
-        except GLib.Error as exc:
-            self._toast(f"Не удалось открыть сайт: {exc.message}")
-
-    # ------------------------------------------------------------------ whatsnew
-    def _whatsnew_dialog(self) -> None:
-        """Диалог «Что нового» со списком изменений."""
-        dialog = Adw.Dialog()
-        dialog.set_title("Что нового")
-        dialog.set_content_width(700)
-        dialog.set_content_height(560)
-
-        toolbar = Adw.ToolbarView()
-        header = Adw.HeaderBar()
-        header.set_title_widget(
-            Adw.WindowTitle(
-                title="Что нового",
-                subtitle=f"Версия {paths.VERSION}",
-            )
-        )
-        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
-        close.add_css_class("flat")
-        close.set_tooltip_text("Закрыть")
-        close.connect("clicked", lambda *_: dialog.close())
-        header.pack_end(close)
-        toolbar.add_top_bar(header)
-
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_vexpand(True)
-        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-
-        text = Gtk.TextView()
-        text.set_editable(False)
-        text.set_cursor_visible(False)
-        text.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        text.set_margin_start(16)
-        text.set_margin_end(16)
-        text.set_margin_top(16)
-        text.set_margin_bottom(16)
-        buffer = text.get_buffer()
-        buffer.set_text(
-            "v0.2.1\n"
-            "\n"
-            "• Поддержка протоколов: VLESS, Trojan, Shadowsocks, VMess, Hysteria2, WireGuard, Amnezia\n"
-            "• Диалог «Ядера»: скачивание ядер Xray и Amnezia под архитектуру пользователя\n"
-            "• Кнопки ядер как столбик: одна под другой\n"
-            "• Меню «О программе» → «Что нового»: этот список изменений\n"
-            "• Убрана тема оформления — GTK4 определяет тему автоматически\n"
-            "• Синий бар #14386e и активная вкладка #2f6bd8\n"
-            "• TUN gateway с CIDR-адресом (172.19.0.1/30, fdfe:dcba:9876::1/126)\n"
-        )
-        scrolled.set_child(text)
         toolbar.set_content(scrolled)
         dialog.set_child(toolbar)
         dialog.present(self)
