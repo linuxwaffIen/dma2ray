@@ -17,12 +17,10 @@ from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
 from .installer import (
     ASSETS_XRAY,
-    ASSETS_AMNEZIA_XRAY,
     SUPPORTED_ARCHS,
     asset_name,
     current_arch,
     install_core,
-    release_base,
 )
 from .ping import tcp_ping
 from .speedtest import SpeedResult, speed_test
@@ -1763,13 +1761,9 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled.set_vexpand(True)
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
-        box.set_margin_start(24)
-        box.set_margin_end(24)
-        box.set_margin_top(24)
-        box.set_margin_bottom(24)
-        box.set_halign(Gtk.Align.CENTER)
-        box.set_valign(Gtk.Align.CENTER)
+        group = Adw.PreferencesGroup()
+        group.set_title("Ядро")
+        group.set_description("Выберите ядро для скачивания под вашу архитектуру")
 
         for kernel_type, title in (("xray", "Ядро Xray"), ("amnezia-xray", "Ядро Amnezia Xray")):
             asset = None
@@ -1797,12 +1791,12 @@ class MainWindow(Adw.ApplicationWindow):
                 ),
             )
             row.add_suffix(btn)
-            box.append(row)
+            group.add(row)
 
             separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-            box.append(separator)
+            group.add(separator)
 
-        scrolled.set_child(box)
+        scrolled.set_child(group)
         toolbar.set_content(scrolled)
         dialog.set_child(toolbar)
         dialog.present(self)
