@@ -1687,11 +1687,6 @@ class MainWindow(Adw.ApplicationWindow):
                 title="Ядра",
             )
         )
-        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
-        close.add_css_class("flat")
-        close.set_tooltip_text("Закрыть")
-        close.connect("clicked", lambda *_: dialog.close())
-        header.pack_end(close)
         toolbar.add_top_bar(header)
 
         scrolled = Gtk.ScrolledWindow()
