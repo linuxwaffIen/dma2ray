@@ -66,13 +66,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            dpkg-dev \
-            tar \
-            gzip \
-            xz-utils \
-            zstd \
-            bsdtar \
-            fakeroot
+            dpkg-dev
 
       - name: Установка Nuitka и patchelf
         run: |
