@@ -327,11 +327,61 @@ def parse_hysteria2(uri: str) -> VlessProfile:
 
 
 def parse_wireguard(uri: str) -> VlessProfile:
-    raise VlessError("WireGuard пока не поддерживается в клиенте")
+    uri = uri.strip()
+    if not uri.lower().startswith("wireguard://"):
+        raise VlessError("Ссылка должна начинаться с wireguard://")
+    rest = uri[len("wireguard://"):]
+    auth, _, hostport = rest.partition("@")
+    public_key = unquote(auth)
+    if not public_key:
+        raise VlessError("В ссылке отсутствует публичный ключ WireGuard")
+    hostport = hostport.split("?", 1)[0]
+    host, _, port_str = hostport.rpartition(":")
+    if not host:
+        raise VlessError("В ссылке отсутствует адрес сервера")
+    try:
+        port = int(port_str or "51820")
+    except ValueError as exc:
+        raise VlessError(f"Некорректный порт: {exc}") from exc
+    return replace(
+        VlessProfile(
+            uuid=public_key,
+            address=host,
+            port=port,
+            name=f"wireguard://{host}:{port}",
+            security="none",
+        ),
+        protocol="wireguard",
+    )
 
 
 def parse_amnezia(uri: str) -> VlessProfile:
-    raise VlessError("Amnezia пока не поддерживается в клиенте")
+    uri = uri.strip()
+    if not uri.lower().startswith("amnezia://"):
+        raise VlessError("Ссылка должна начинаться с amnezia://")
+    rest = uri[len("amnezia://"):]
+    auth, _, hostport = rest.partition("@")
+    password = unquote(auth)
+    if not password:
+        raise VlessError("В ссылке отсутствует пароль Amnezia")
+    hostport = hostport.split("?", 1)[0]
+    host, _, port_str = hostport.rpartition(":")
+    if not host:
+        raise VlessError("В ссылке отсутствует адрес сервера")
+    try:
+        port = int(port_str or "443")
+    except ValueError as exc:
+        raise VlessError(f"Некорректный порт: {exc}") from exc
+    return replace(
+        VlessProfile(
+            uuid=password,
+            address=host,
+            port=port,
+            name=f"amnezia://{host}:{port}",
+            security="none",
+        ),
+        protocol="amnezia",
+    )
 
 
 def _split_hosts(value: str) -> list[str]:

@@ -15,6 +15,7 @@ from .vless import (
     parse_trojan,
     parse_vless,
     parse_vmess,
+    parse_wireguard,
 )
 
 MAX_SUBSCRIPTION_BYTES = 5 * 1024 * 1024
@@ -26,6 +27,8 @@ SUPPORTED_PREFIXES = (
     "vmess://",
     "hysteria2://",
     "hy2://",
+    "wireguard://",
+    "amnezia://",
 )
 KNOWN_PREFIXES = ("tuic://",)
 
@@ -94,6 +97,10 @@ def parse_subscription(text: str) -> FetchResult:
                 profile = _safe_parse(parse_vmess, line)
             elif lowered.startswith("hysteria2://") or lowered.startswith("hy2://"):
                 profile = _safe_parse(parse_hysteria2, line)
+            elif lowered.startswith("wireguard://"):
+                profile = _safe_parse(parse_wireguard, line)
+            elif lowered.startswith("amnezia://"):
+                profile = _safe_parse(parse_amnezia, line)
             if profile is not None:
                 result.entries.append((profile.name, line))
             else:

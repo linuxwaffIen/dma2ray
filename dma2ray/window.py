@@ -15,7 +15,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
-from .installer import ASSETS, SUPPORTED_ARCHS, install_core
+from .installer import ASSETS, install_core
 from .ping import tcp_ping
 from .speedtest import SpeedResult, speed_test
 from .state import LOG_LEVELS, MODES, Profile, Store
@@ -1674,9 +1674,9 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ kernels
     def _show_kernels_dialog(self) -> None:
-        """Открыть вкладку скачивания ядер Xray-core по архитектурам (внутри клиента)."""
+        """Диалог скачивания ядра Xray-core под архитектуру пользователя."""
         dialog = Adw.Dialog()
-        dialog.set_title("Ядра Xray-core")
+        dialog.set_title("Ядра")
         dialog.set_content_width(700)
         dialog.set_content_height(480)
 
@@ -1684,8 +1684,8 @@ class MainWindow(Adw.ApplicationWindow):
         header = Adw.HeaderBar()
         header.set_title_widget(
             Adw.WindowTitle(
-                title="Ядра Xray-core",
-                subtitle="Скачивание ядра под нужную архитектуру",
+                title="Ядра",
+                subtitle="Скачать ядро Xray-core",
             )
         )
         close = Gtk.Button.new_from_icon_name("window-close-symbolic")
@@ -1700,26 +1700,36 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
         tab_view = Adw.TabView()
-        for arch, asset in sorted(ASSETS.items()):
+        import platform as _platform
+
+        arch = _platform.machine().lower()
+        asset = ASSETS.get(arch)
+        if asset is None:
+            # Нет сборки для этой архитектуры — показываем одну неактивную вкладку.
             row = Adw.ActionRow(
-                title=f"Xray-core ({arch})",
+                title="Ядро",
+                subtitle=f"Сборка для архитектуры {arch} недоступна",
+            )
+            btn = Gtk.Button(label="Скачать")
+            btn.add_css_class("flat")
+            btn.set_sensitive(False)
+            row.add_suffix(btn)
+            page = tab_view.add_page(row)
+            page.set_title("Ядро")
+            self._core_tabs[arch] = row
+            self._core_buttons[arch] = btn
+        else:
+            row = Adw.ActionRow(
+                title="Ядро",
                 subtitle=f"Сборка {asset}",
             )
             btn = Gtk.Button(label="Скачать")
-            supported = arch in SUPPORTED_ARCHS
-            if supported:
-                btn.add_css_class("suggested-action")  # синяя
-            else:
-                btn.add_css_class("flat")  # серая
-                btn.set_sensitive(False)
-            btn.set_tooltip_text(f"Скачать Xray-core для архитектуры {arch}")
-            btn.connect(
-                "clicked",
-                lambda *_, a=arch, b=btn, r=row: self._install_core_for_arch(a, b, r),
-            )
+            btn.add_css_class("suggested-action")  # синяя
+            btn.set_tooltip_text("Скачать ядро Xray-core")
+            btn.connect("clicked", lambda *_: self._install_core_for_arch(arch, btn, row))
             row.add_suffix(btn)
             page = tab_view.add_page(row)
-            page.set_title(f"Xray-core · {arch}")
+            page.set_title("Ядро")
             self._core_tabs[arch] = row
             self._core_buttons[arch] = btn
 
