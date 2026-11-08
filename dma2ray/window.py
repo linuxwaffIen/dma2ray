@@ -1753,20 +1753,69 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:
-        dialog = Adw.AboutDialog(
-            application_name=paths.APP_TITLE,
-            application_icon=paths.ICON_NAME,
-            developer_name="Dma2ray contributors",
-            version=paths.VERSION,
-            comments=(
-                "Клиент VLESS для Linux на GTK4/libadwaita.\n"
-                "Ядро — Xray-core, включая нативный TUN-режим.\n"
-                "Клиент создан на базе Xray — благодарности разработчику "
-                "этого ядра: https://github.com/XTLS/Xray-core"
-            ),
-            website="https://github.com/XTLS/Xray-core",
-            license_type=Gtk.License.GPL_3_0_ONLY,
+        """Диалог «О программе» — версия + 3 кнопки в строку."""
+        dialog = Adw.Dialog()
+        dialog.set_title("О программе")
+        dialog.set_content_width(500)
+        dialog.set_content_height(300)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(
+            Adw.WindowTitle(
+                title="О программе",
+                subtitle=f"Версия {paths.VERSION}",
+            )
         )
+        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
+        close.add_css_class("flat")
+        close.set_tooltip_text("Закрыть")
+        close.connect("clicked", lambda *_: dialog.close())
+        header.pack_end(close)
+        toolbar.add_top_bar(header)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_margin_start(24)
+        box.set_margin_end(24)
+        box.set_margin_top(24)
+        box.set_margin_bottom(16)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_valign(Gtk.Align.CENTER)
+
+        title = Gtk.Label(label=f"{paths.APP_TITLE} — версия {paths.VERSION}")
+        title.add_css_class("title-1")
+        box.append(title)
+
+        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        box.append(sep)
+
+        btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        btns.set_halign(Gtk.Align.CENTER)
+
+        btn_details = Gtk.Button(label="Подробности")
+        btn_details.add_css_class("flat")
+        btn_details.connect("clicked", lambda *_: self._show_license())
+        btns.append(btn_details)
+
+        btn_legal = Gtk.Button(label="Правовые сведения")
+        btn_legal.add_css_class("flat")
+        btn_legal.connect("clicked", lambda *_: self._show_legal())
+        btns.append(btn_legal)
+
+        btn_whatsnew = Gtk.Button(label="Что нового")
+        btn_whatsnew.add_css_class("flat")
+        btn_whatsnew.connect("clicked", lambda *_: (dialog.close(), self._whatsnew_dialog()))
+        btns.append(btn_whatsnew)
+
+        box.append(btns)
+
+        scrolled.set_child(box)
+        toolbar.set_content(scrolled)
+        dialog.set_child(toolbar)
         dialog.present(self)
 
     def _show_license(self) -> None:
