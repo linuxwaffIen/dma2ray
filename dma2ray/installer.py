@@ -14,28 +14,10 @@ from pathlib import Path
 
 from . import paths
 
-XRAY_RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
-AMNEZIA_RELEASE_BASE = "https://github.com/amnezia-vpn/xray-core/releases/latest/download"
+RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
 USER_AGENT = "dma2ray/0.2"
 
-SUPPORTED_ARCHS = frozenset(
-    {
-        "x86_64",
-        "amd64",
-        "aarch64",
-        "arm64",
-        "armv7l",
-        "armv7",
-        "armv6l",
-        "i386",
-        "i486",
-        "i586",
-        "i686",
-        "riscv64",
-    }
-)
-
-ASSETS_XRAY = {
+ASSETS = {
     "x86_64": "Xray-linux-64.zip",
     "amd64": "Xray-linux-64.zip",
     "aarch64": "Xray-linux-arm64-v8a.zip",
@@ -50,22 +32,15 @@ ASSETS_XRAY = {
     "riscv64": "Xray-linux-riscv64.zip",
 }
 
-ASSETS_AMNEZIA = dict(ASSETS_XRAY)
-
 Progress = Callable[[float, str], None]
 
 
-def asset_name(kernel_type: str, arch: str | None = None) -> str:
-    machine = (arch or platform.machine()).lower()
-    assets = ASSETS_AMNEZIA if kernel_type == "amnezia" else ASSETS_XRAY
-    asset = assets.get(machine)
+def asset_name() -> str:
+    machine = platform.machine().lower()
+    asset = ASSETS.get(machine)
     if not asset:
-        raise RuntimeError(f"Нет сборки {kernel_type} для архитектуры {machine}")
+        raise RuntimeError(f"Нет сборки Xray для архитектуры {machine}")
     return asset
-
-
-def _release_base(kernel_type: str) -> str:
-    return AMNEZIA_RELEASE_BASE if kernel_type == "amnezia" else XRAY_RELEASE_BASE
 
 
 def _request(url: str) -> urllib.request.Request:
@@ -107,18 +82,15 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def install_core(
-    progress: Progress | None = None, arch: str | None = None, kernel_type: str = "xray"
-) -> Path:
-    asset = asset_name(kernel_type, arch)
+def install_core(progress: Progress | None = None) -> Path:
+    asset = asset_name()
     paths.CORE_BIN_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="dma2ray-core-", dir=str(paths.CACHE_DIR)) as tmp:
         tmpdir = Path(tmp)
         archive = tmpdir / asset
-        base_url = f"{_release_base(kernel_type)}/{asset}"
-        label = "Amnezia" if kernel_type == "amnezia" else "Xray-core"
+        base_url = f"{RELEASE_BASE}/{asset}"
         if progress:
-            progress(0.02, f"Загрузка {label}…")
+            progress(0.02, f"Загрузка {asset}…")
         _download(base_url, archive, progress)
         if progress:
             progress(0.96, "Проверка контрольной суммы…")
@@ -143,7 +115,7 @@ def install_core(
 
         new_binary = extract_dir / "xray"
         if not new_binary.exists():
-            raise RuntimeError(f"В архиве {label} не найден бинарник xray")
+            raise RuntimeError("В архиве Xray не найден бинарник xray")
         new_binary.chmod(0o755)
         staged = paths.CORE_BIN_DIR / ".xray.new"
         shutil.copy2(new_binary, staged)
@@ -156,5 +128,5 @@ def install_core(
                 shutil.copy2(source, paths.CORE_BIN_DIR / extra)
 
     if progress:
-        progress(1.0, f"Xray-core для {arch or platform.machine()} установлен")
+        progress(1.0, "Xray-core установлен")
     return paths.CORE_PATH
