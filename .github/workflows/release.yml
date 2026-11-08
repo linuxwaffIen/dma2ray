@@ -14,40 +14,6 @@ jobs:
       - name: Checkout репозитория
         uses: actions/checkout@v4
 
-      - name: Установка Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-
-      - name: Установка системных зависимостей
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-4-dev \
-            libadwaita-1-dev \
-            gir1.2-gtk-4.0 \
-            gir1.2-adw-1 \
-            libgirepository1.0-dev \
-            python3-gi \
-            python3-gi-cairo \
-            libx11-dev \
-            libglib2.0-dev \
-            libjson-c-dev
-
-      - name: Установка Nuitka и patchelf
-        run: |
-          pip install --upgrade pip
-          pip install nuitka patchelf
-
-      - name: Сборка бинарника (Nuitka)
-        run: |
-          chmod +x build.sh
-          ./build.sh
-
-      - name: Проверка версии бинарника
-        run: |
-          dist/dma2ray.dist/dma2ray --version
-
       - name: Создание GitHub релиза
         uses: softprops/action-gh-release@v2
         with:
@@ -58,13 +24,14 @@ jobs:
 
             ## Установка
 
-            Запустите бинарник:
+            Скомпилируйте бинарник локально:
             ```bash
-            ./dma2ray
+            git clone https://github.com/linuxwaffIen/dma2ray.git
+            cd dma2ray
+            ./build.sh
+            ./dist/dma2ray.dist/dma2ray
             ```
-          files: |
-            dist/dma2ray.dist/dma2ray
-          draft: false
-          prerelease: false
+
+          download: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
