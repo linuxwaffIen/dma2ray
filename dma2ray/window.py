@@ -1753,28 +1753,86 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:
-        dialog = Adw.AboutDialog(
-            application_name=paths.APP_TITLE,
-            application_icon=paths.ICON_NAME,
-            developer_name="Dma2ray contributors",
-            version=paths.VERSION,
-            comments=(
+        """Диалог «О программе» с кнопкой «Что нового» внизу."""
+        dialog = Adw.Dialog()
+        dialog.set_title("О программе")
+        dialog.set_content_width(700)
+        dialog.set_content_height(560)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(
+            Adw.WindowTitle(
+                title="О программе",
+                subtitle=f"Версия {paths.VERSION}",
+            )
+        )
+        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
+        close.add_css_class("flat")
+        close.set_tooltip_text("Закрыть")
+        close.connect("clicked", lambda *_: dialog.close())
+        header.pack_end(close)
+        toolbar.add_top_bar(header)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_margin_start(24)
+        box.set_margin_end(24)
+        box.set_margin_top(24)
+        box.set_margin_bottom(12)
+        box.set_halign(Gtk.Align.CENTER)
+        box.set_valign(Gtk.Align.CENTER)
+
+        # Иконка приложения
+        icon = Gtk.Image.new_from_icon_name(paths.ICON_NAME)
+        icon.set_pixel_size(64)
+        box.append(icon)
+
+        # Название
+        title = Gtk.Label(label=paths.APP_TITLE)
+        title.add_css_class("title-1")
+        box.append(title)
+
+        # Версия
+        version = Gtk.Label(label=f"Версия {paths.VERSION}")
+        version.add_css_class("caption")
+        box.append(version)
+
+        # Разработчик
+        dev = Gtk.Label(label="Dma2ray contributors")
+        dev.add_css_class("caption")
+        box.append(dev)
+
+        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        box.append(sep)
+
+        # Описание
+        desc = Gtk.Label(
+            label=(
                 "Клиент VLESS для Linux на GTK4/libadwaita.\n"
                 "Ядро — Xray-core, включая нативный TUN-режим.\n"
                 "Клиент создан на базе Xray — благодарности разработчику "
                 "этого ядра: https://github.com/XTLS/Xray-core"
             ),
-            website="https://github.com/XTLS/Xray-core",
-            license_type=Gtk.License.GPL_3_0_ONLY,
+            justify=Gtk.Justification.CENTER,
         )
-        try:
-            dialog.set_buttons(["Что нового"])
-            dialog.connect(
-                "button-clicked",
-                lambda d, name: self._whatsnew_dialog() if name == "Что нового" else None,
-            )
-        except Exception:
-            pass
+        desc.set_wrap(True)
+        desc.set_max_width_chars(60)
+        box.append(desc)
+
+        # Кнопка «Что нового» внизу
+        whatsnew = Gtk.Button(label="Что нового")
+        whatsnew.add_css_class("suggested-action")
+        whatsnew.set_halign(Gtk.Align.CENTER)
+        whatsnew.connect("clicked", lambda *_: (dialog.close(), self._whatsnew_dialog()))
+        box.append(whatsnew)
+
+        scrolled.set_child(box)
+        toolbar.set_content(scrolled)
+        dialog.set_child(toolbar)
         dialog.present(self)
 
     # ------------------------------------------------------------------ whatsnew
