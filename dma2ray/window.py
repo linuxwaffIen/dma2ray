@@ -259,6 +259,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append("Настройки", "win.settings")
         menu.append("Журнал Xray", "win.show-log")
         menu.append("О программе", "win.about")
+        menu.append("Ядра", "win.kernels")
         menu.append("Выход", "win.quit")
         menu_button = Gtk.MenuButton()
         menu_button.set_icon_name("open-menu-symbolic")
@@ -594,39 +595,6 @@ class MainWindow(Adw.ApplicationWindow):
         startup.add(auto_row)
         page.add(startup)
 
-        core_group = Adw.PreferencesGroup(
-            title="Ядро",
-            description="Xray-core требуется для VLESS, прокси и TUN.",
-        )
-        self.core_tab_view = Adw.TabView()
-        for arch, asset in sorted(ASSETS.items()):
-            core_row = Adw.ActionRow(
-                title=f"Xray-core ({arch})",
-                subtitle=f"Сборка {asset}",
-            )
-            core_install_button = Gtk.Button(label="Скачать")
-            supported = arch in SUPPORTED_ARCHS
-            if supported:
-                # Синяя кнопка для поддерживаемой архитектуры.
-                core_install_button.add_css_class("suggested-action")
-            else:
-                # Серая (неактивная) кнопка для неподдерживаемой архитектуры.
-                core_install_button.add_css_class("flat")
-                core_install_button.set_sensitive(False)
-            core_install_button.set_tooltip_text(f"Скачать Xray-core для архитектуры {arch}")
-            core_install_button.connect(
-                "clicked",
-                lambda *_, arch=arch, btn=core_install_button, row=core_row: self._install_core_for_arch(
-                    arch, btn, row
-                ),
-            )
-            core_row.add_suffix(core_install_button)
-            core_page = self.core_tab_view.add_page(core_row)
-            core_page.set_title(f"Xray-core · {arch}")
-            self._core_tabs[arch] = core_row
-            self._core_buttons[arch] = core_install_button
-        core_group.add(self.core_tab_view)
-        page.add(core_group)
 
         diagnostics = Adw.PreferencesGroup(title="Диагностика")
         log_action = Adw.ActionRow(title="Журнал Xray", subtitle="Последние сообщения ядра")
@@ -655,6 +623,7 @@ class MainWindow(Adw.ApplicationWindow):
             "settings": lambda *_: self.view_stack.set_visible_child_name("settings"),
             "show-log": lambda *_: self._show_log(),
             "about": lambda *_: self._about_dialog(),
+            "kernels": lambda *_: self._show_kernels_dialog(),
             "quit": lambda *_: self.app.quit(),
         }
         for name, callback in simple.items():
@@ -1701,6 +1670,62 @@ class MainWindow(Adw.ApplicationWindow):
 
         dialog.connect("closed", closed)
         self._log_dialog = dialog
+        dialog.present(self)
+
+    # ------------------------------------------------------------------ kernels
+    def _show_kernels_dialog(self) -> None:
+        """Открыть вкладку скачивания ядер Xray-core по архитектурам (внутри клиента)."""
+        dialog = Adw.Dialog()
+        dialog.set_title("Ядра Xray-core")
+        dialog.set_content_width(700)
+        dialog.set_content_height(480)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(
+            Adw.WindowTitle(
+                title="Ядра Xray-core",
+                subtitle="Скачивание ядра под нужную архитектуру",
+            )
+        )
+        close = Gtk.Button.new_from_icon_name("window-close-symbolic")
+        close.add_css_class("flat")
+        close.set_tooltip_text("Закрыть")
+        close.connect("clicked", lambda *_: dialog.close())
+        header.pack_end(close)
+        toolbar.add_top_bar(header)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+
+        tab_view = Adw.TabView()
+        for arch, asset in sorted(ASSETS.items()):
+            row = Adw.ActionRow(
+                title=f"Xray-core ({arch})",
+                subtitle=f"Сборка {asset}",
+            )
+            btn = Gtk.Button(label="Скачать")
+            supported = arch in SUPPORTED_ARCHS
+            if supported:
+                btn.add_css_class("suggested-action")  # синяя
+            else:
+                btn.add_css_class("flat")  # серая
+                btn.set_sensitive(False)
+            btn.set_tooltip_text(f"Скачать Xray-core для архитектуры {arch}")
+            btn.connect(
+                "clicked",
+                lambda *_, a=arch, b=btn, r=row: self._install_core_for_arch(a, b, r),
+            )
+            row.add_suffix(btn)
+            page = tab_view.add_page(row)
+            page.set_title(f"Xray-core · {arch}")
+            self._core_tabs[arch] = row
+            self._core_buttons[arch] = btn
+
+        scrolled.set_child(tab_view)
+        toolbar.set_content(scrolled)
+        dialog.set_child(toolbar)
         dialog.present(self)
 
     # ------------------------------------------------------------------ about
