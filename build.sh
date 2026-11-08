@@ -53,8 +53,8 @@ fi
 # (системный patchelf).
 [ -d "$VENV/bin" ] && export PATH="$VENV/bin:$PATH"
 if ! command -v patchelf >/dev/null 2>&1; then
-    echo "     ставлю patchelf через pip (нужен для standalone-режима)..."
-    pip_install patchelf
+    echo "     ставлю patchelf через apt (нужен для standalone-режима)..."
+    sudo apt-get install -y patchelf || pip install patchelf
 fi
 if ! command -v patchelf >/dev/null 2>&1; then
     echo "Ошибка: patchelf не найден (pip install patchelf)" >&2
