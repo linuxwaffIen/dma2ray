@@ -259,7 +259,6 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append("Настройки", "win.settings")
         menu.append("Журнал Xray", "win.show-log")
         menu.append("О программе", "win.about")
-        menu.append("Что нового", "win.whatsnew")
         menu.append("Ядра", "win.kernels")
         menu.append("Выход", "win.quit")
         menu_button = Gtk.MenuButton()
@@ -624,7 +623,6 @@ class MainWindow(Adw.ApplicationWindow):
             "settings": lambda *_: self.view_stack.set_visible_child_name("settings"),
             "show-log": lambda *_: self._show_log(),
             "about": lambda *_: self._about_dialog(),
-            "whatsnew": lambda *_: self._whatsnew_dialog(),
             "kernels": lambda *_: self._show_kernels_dialog(),
             "quit": lambda *_: self.app.quit(),
         }
@@ -1769,6 +1767,14 @@ class MainWindow(Adw.ApplicationWindow):
             website="https://github.com/XTLS/Xray-core",
             license_type=Gtk.License.GPL_3_0_ONLY,
         )
+        try:
+            dialog.set_buttons(["Что нового"])
+            dialog.connect(
+                "button-clicked",
+                lambda d, name: self._whatsnew_dialog() if name == "Что нового" else None,
+            )
+        except Exception:
+            pass
         dialog.present(self)
 
     # ------------------------------------------------------------------ whatsnew
