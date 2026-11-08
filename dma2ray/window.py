@@ -1685,7 +1685,6 @@ class MainWindow(Adw.ApplicationWindow):
         header.set_title_widget(
             Adw.WindowTitle(
                 title="Ядра",
-                subtitle="Скачать ядро Xray-core",
             )
         )
         close = Gtk.Button.new_from_icon_name("window-close-symbolic")
@@ -1725,7 +1724,6 @@ class MainWindow(Adw.ApplicationWindow):
             )
             btn = Gtk.Button(label="Скачать")
             btn.add_css_class("suggested-action")  # синяя
-            btn.set_tooltip_text("Скачать ядро Xray-core")
             btn.connect("clicked", lambda *_: self._install_core_for_arch(arch, btn, row))
             row.add_suffix(btn)
             page = tab_view.add_page(row)
