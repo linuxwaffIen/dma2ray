@@ -15,7 +15,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
-from .installer import ASSETS, install_core
+from .installer import ASSETS_XRAY, SUPPORTED_ARCHS, asset_name, install_core
 from .ping import tcp_ping
 from .speedtest import SpeedResult, speed_test
 from .state import LOG_LEVELS, MODES, Profile, Store
@@ -76,9 +76,14 @@ actionbar {
   background-color: #14386e;
 }
 viewswitcherbar {
-  min-height: 56px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  min-height: 44px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+viewswitcherbar button {
+  min-width: 140px;
+  min-height: 40px;
+  font-size: 1.1em;
 }
 viewswitcherbar button:checked {
   background-color: #2f6bd8;
@@ -144,6 +149,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._log_timeout: int | None = None
         self._log_dialog: Adw.Dialog | None = None
         self._core = CoreManager(store, self._core_status_from_thread)
+        self._core_tabs: dict[str, Adw.ActionRow] = {}
+        self._core_buttons: dict[str, Gtk.Button] = {}
         self._tray = TrayController(
             on_show=lambda: GLib.idle_add(self._present_from_tray),
             on_toggle=lambda: GLib.idle_add(self._toggle_connection),
@@ -607,28 +614,39 @@ class MainWindow(Adw.ApplicationWindow):
             title="Ядро",
             description="Xray-core требуется для VLESS, прокси и TUN.",
         )
-        self.core_row = Adw.ActionRow(title="Xray-core", subtitle=self._core_subtitle())
-        self.core_install_button = Gtk.Button(label="Скачать")
-        self.core_install_button.add_css_class("flat")
-        self.core_install_button.set_tooltip_text("Скачать последнюю версию Xray-core")
-        self.core_install_button.connect("clicked", lambda *_: self._install_core_async())
-        self.core_row.add_suffix(self.core_install_button)
-        core_group.add(self.core_row)
+        core_tab_view = Adw.TabView()
+        for arch, asset in sorted(ASSETS_XRAY.items()):
+            core_row = Adw.ActionRow(
+                title=f"Ядро Xray ({arch})",
+                subtitle=f"Сборка {asset}",
+            )
+            core_install_button = Gtk.Button(label="Скачать")
+            supported = arch in SUPPORTED_ARCHS
+            if supported:
+                core_install_button.add_css_class("suggested-action")
+            else:
+                core_install_button.add_css_class("flat")
+                core_install_button.set_sensitive(False)
+            core_install_button.set_tooltip_text(f"Скачать ядро Xray для архитектуры {arch}")
+            core_install_button.connect(
+                "clicked",
+                lambda *_, a=arch, b=core_install_button, r=core_row: self._install_core_for_arch(
+                    a, b, r, "xray"
+                ),
+            )
+            core_row.add_suffix(core_install_button)
+            core_page = core_tab_view.add_page(core_row)
+            core_page.set_title(f"Ядро Xray · {arch}")
+            self._core_tabs[f"{arch}:xray"] = core_row
+            self._core_buttons[f"{arch}:xray"] = core_install_button
 
-        choose_row = Adw.ActionRow(
-            title="Указать путь к Xray",
-            subtitle="Если ядро уже установлено в системе",
-        )
-        choose_button = Gtk.Button(label="Выбрать")
-        choose_button.add_css_class("flat")
-        choose_button.connect("clicked", lambda *_: self._choose_core())
-        choose_row.add_suffix(choose_button)
-        core_group.add(choose_row)
+            separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            sep_page = Adw.TabPage()
+            sep_page.set_child(separator)
+            sep_page.set_title(f"Разделитель · {arch}")
+            core_tab_view.add_page(sep_page)
 
-        check_row = Adw.ActionRow(title="Проверить ядро", subtitle="Запустить xray version")
-        check_row.set_activatable(True)
-        check_row.connect("activated", lambda *_: self._check_core_async())
-        core_group.add(check_row)
+        core_group.add(core_tab_view)
         page.add(core_group)
 
         diagnostics = Adw.PreferencesGroup(title="Диагностика")
@@ -1594,41 +1612,60 @@ class MainWindow(Adw.ApplicationWindow):
             return "Не найден — нажмите «Скачать»"
         return str(found)
 
-    def _install_core_async(self) -> None:
+    def _install_core_for_arch(
+        self, arch: str, btn: "Gtk.Button", row: "Adw.ActionRow | None" = None,
+        kernel_type: str = "xray",
+    ) -> None:
         if self._core.is_running:
             self._toast("Сначала отключитесь, затем обновите ядро")
             return
-        self.core_install_button.set_sensitive(False)
-        self.core_install_button.set_label("Загрузка…")
+        btn.set_sensitive(False)
+        btn.set_label("Загрузка…")
 
         def progress(fraction: float, message: str) -> None:
-            GLib.idle_add(self._core_progress, fraction, message)
+            GLib.idle_add(self._core_progress, fraction, message, arch, kernel_type)
 
         def worker() -> None:
             try:
-                path = install_core(progress)
+                path = install_core(progress, arch, kernel_type)
             except Exception as exc:
-                GLib.idle_add(self._core_install_done, None, str(exc))
+                GLib.idle_add(self._core_install_done, None, str(exc), arch, kernel_type)
             else:
-                GLib.idle_add(self._core_install_done, str(path), None)
+                GLib.idle_add(self._core_install_done, str(path), None, arch, kernel_type)
 
         threading.Thread(target=worker, name="core-install", daemon=True).start()
 
-    def _core_progress(self, fraction: float, message: str) -> bool:
-        if hasattr(self, "core_row"):
-            self.core_row.set_subtitle(f"{message} {int(fraction * 100)}%")
+    def _core_progress(
+        self, fraction: float, message: str, arch: str, kernel_type: str
+    ) -> bool:
+        key = f"{arch}:{kernel_type}"
+        row = self._core_tabs.get(key)
+        if row is not None:
+            row.set_subtitle(f"{message} {int(fraction * 100)}%")
         return False
 
-    def _core_install_done(self, path: str | None, error: str | None) -> bool:
-        self.core_install_button.set_sensitive(True)
-        self.core_install_button.set_label("Скачать")
+    def _core_install_done(
+        self,
+        path: str | None,
+        error: str | None,
+        arch: str | None = None,
+        kernel_type: str = "xray",
+    ) -> bool:
+        key = f"{arch}:{kernel_type}" if arch is not None else None
+        row = self._core_tabs.get(key) if key is not None else None
+        if row is not None:
+            row.set_subtitle(self._core_subtitle())
+            btn = self._core_buttons.get(key)
+            if btn is not None:
+                btn.set_sensitive(True)
+                btn.set_label("Скачать")
         if path:
             self.store.set_setting("core_path", path)
-            self.core_row.set_subtitle(self._core_subtitle())
-            self._toast("Xray-core установлен")
+            label = "Amnezia" if kernel_type == "amnezia" else "Xray-core"
+            self._toast(f"{label} установлен")
         else:
-            self.core_row.set_subtitle(self._core_subtitle())
-            self._toast(f"Не удалось установить Xray: {error}")
+            label = "Amnezia" if kernel_type == "amnezia" else "Xray-core"
+            self._toast(f"Не удалось установить {label}: {error}")
         return False
 
     def _choose_core(self) -> None:

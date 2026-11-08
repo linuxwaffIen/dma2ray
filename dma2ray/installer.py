@@ -17,6 +17,38 @@ from . import paths
 RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
 USER_AGENT = "dma2ray/0.2"
 
+SUPPORTED_ARCHS = frozenset(
+    {
+        "x86_64",
+        "amd64",
+        "aarch64",
+        "arm64",
+        "armv7l",
+        "armv7",
+        "armv6l",
+        "i386",
+        "i486",
+        "i586",
+        "i686",
+        "riscv64",
+    }
+)
+
+ASSETS_XRAY = {
+    "x86_64": "Xray-linux-64.zip",
+    "amd64": "Xray-linux-64.zip",
+    "aarch64": "Xray-linux-arm64-v8a.zip",
+    "arm64": "Xray-linux-arm64-v8a.zip",
+    "armv7l": "Xray-linux-arm32-v7a.zip",
+    "armv7": "Xray-linux-arm32-v7a.zip",
+    "armv6l": "Xray-linux-arm32-v6.zip",
+    "i386": "Xray-linux-32.zip",
+    "i486": "Xray-linux-32.zip",
+    "i586": "Xray-linux-32.zip",
+    "i686": "Xray-linux-32.zip",
+    "riscv64": "Xray-linux-riscv64.zip",
+}
+
 ASSETS = {
     "x86_64": "Xray-linux-64.zip",
     "amd64": "Xray-linux-64.zip",
