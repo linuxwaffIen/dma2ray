@@ -1685,7 +1685,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ kernels
     def _show_kernels_dialog(self) -> None:
-        """Диалог скачивания ядра: Xray (первое), Amnezia (второе)."""
+        """Диалог скачивания ядра: Xray (первое), Amnezia (второе) — столбиком."""
         dialog = Adw.Dialog()
         dialog.set_title("Ядра")
         dialog.set_content_width(700)
@@ -1704,69 +1704,49 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled.set_vexpand(True)
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
-        tab_view = Adw.TabView()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        box.set_margin_start(18)
+        box.set_margin_end(18)
+        box.set_margin_top(18)
+        box.set_margin_bottom(18)
+
         import platform as _platform
 
         arch = _platform.machine().lower()
         supported = arch in SUPPORTED_ARCHS
 
-        # Вкладка 1: ядро Xray
-        xray_asset = None
-        try:
-            xray_asset = asset_name("xray", arch)
-        except RuntimeError:
-            xray_asset = None
-        row_xray = Adw.ActionRow(
-            title="Ядро Xray",
-            subtitle=(f"Сборка {xray_asset}" if xray_asset else f"Для {arch} недоступно"),
-        )
-        btn_xray = Gtk.Button(label="Скачать")
-        if supported and xray_asset:
-            btn_xray.add_css_class("suggested-action")
-            btn_xray.connect(
-                "clicked",
-                lambda *_, a=arch, b=btn_xray, r=row_xray: self._install_core_for_arch(
-                    a, b, r, "xray"
-                ),
+        def _kernel_row(title: str, kernel_type: str) -> None:
+            asset = None
+            try:
+                asset = asset_name(kernel_type, arch)
+            except RuntimeError:
+                asset = None
+            row = Adw.ActionRow(
+                title=title,
+                subtitle=(f"Сборка {asset}" if asset else f"Для {arch} недоступно"),
             )
-        else:
-            btn_xray.add_css_class("flat")
-            btn_xray.set_sensitive(False)
-        row_xray.add_suffix(btn_xray)
-        page_xray = tab_view.add_page(row_xray)
-        page_xray.set_title("Xray")
-        self._core_tabs[f"{arch}:xray"] = row_xray
-        self._core_buttons[f"{arch}:xray"] = btn_xray
+            btn = Gtk.Button(label="Скачать")
+            if supported and asset:
+                btn.add_css_class("suggested-action")
+                btn.connect(
+                    "clicked",
+                    lambda *_, a=arch, b=btn, r=row, kt=kernel_type: self._install_core_for_arch(
+                        a, b, r, kt
+                    ),
+                )
+            else:
+                btn.add_css_class("flat")
+                btn.set_sensitive(False)
+            row.add_suffix(btn)
+            key = f"{arch}:{kernel_type}"
+            self._core_tabs[key] = row
+            self._core_buttons[key] = btn
+            box.append(row)
 
-        # Вкладка 2: ядро Amnezia
-        amnezia_asset = None
-        try:
-            amnezia_asset = asset_name("amnezia", arch)
-        except RuntimeError:
-            amnezia_asset = None
-        row_amnezia = Adw.ActionRow(
-            title="Ядро Amnezia",
-            subtitle=(f"Сборка {amnezia_asset}" if amnezia_asset else f"Для {arch} недоступно"),
-        )
-        btn_amnezia = Gtk.Button(label="Скачать")
-        if supported and amnezia_asset:
-            btn_amnezia.add_css_class("suggested-action")
-            btn_amnezia.connect(
-                "clicked",
-                lambda *_, a=arch, b=btn_amnezia, r=row_amnezia: self._install_core_for_arch(
-                    a, b, r, "amnezia"
-                ),
-            )
-        else:
-            btn_amnezia.add_css_class("flat")
-            btn_amnezia.set_sensitive(False)
-        row_amnezia.add_suffix(btn_amnezia)
-        page_amnezia = tab_view.add_page(row_amnezia)
-        page_amnezia.set_title("Amnezia")
-        self._core_tabs[f"{arch}:amnezia"] = row_amnezia
-        self._core_buttons[f"{arch}:amnezia"] = btn_amnezia
+        _kernel_row("Ядро Xray", "xray")
+        _kernel_row("Ядро Amnezia", "amnezia")
 
-        scrolled.set_child(tab_view)
+        scrolled.set_child(box)
         toolbar.set_content(scrolled)
         dialog.set_child(toolbar)
         dialog.present(self)
