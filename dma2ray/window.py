@@ -616,6 +616,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         core_tab_view = Adw.TabView()
         for arch, asset in sorted(ASSETS_XRAY.items()):
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             core_row = Adw.ActionRow(
                 title=f"Ядро Xray ({arch})",
                 subtitle=f"Сборка {asset}",
@@ -635,16 +636,15 @@ class MainWindow(Adw.ApplicationWindow):
                 ),
             )
             core_row.add_suffix(core_install_button)
-            core_page = core_tab_view.add_page(core_row)
+            box.append(core_row)
+
+            separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            box.append(separator)
+
+            core_page = core_tab_view.add_page(box)
             core_page.set_title(f"Ядро Xray · {arch}")
             self._core_tabs[f"{arch}:xray"] = core_row
             self._core_buttons[f"{arch}:xray"] = core_install_button
-
-            separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
-            sep_page = Adw.TabPage()
-            sep_page.set_child(separator)
-            sep_page.set_title(f"Разделитель · {arch}")
-            core_tab_view.add_page(sep_page)
 
         core_group.add(core_tab_view)
         page.add(core_group)
