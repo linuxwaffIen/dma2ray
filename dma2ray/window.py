@@ -15,7 +15,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
-from .installer import ASSETS, install_core
+from .installer import ASSETS_XRAY, SUPPORTED_ARCHS, asset_name, install_core
 from .ping import tcp_ping
 from .speedtest import SpeedResult, speed_test
 from .state import LOG_LEVELS, MODES, Profile, Store
@@ -1561,7 +1561,8 @@ class MainWindow(Adw.ApplicationWindow):
         return str(found)
 
     def _install_core_for_arch(
-        self, arch: str, btn: "Gtk.Button", row: "Adw.ActionRow | None" = None
+        self, arch: str, btn: "Gtk.Button", row: "Adw.ActionRow | None" = None,
+        kernel_type: str = "xray",
     ) -> None:
         if self._core.is_running:
             self._toast("Сначала отключитесь, затем обновите ядро")
@@ -1570,39 +1571,49 @@ class MainWindow(Adw.ApplicationWindow):
         btn.set_label("Загрузка…")
 
         def progress(fraction: float, message: str) -> None:
-            GLib.idle_add(self._core_progress, fraction, message, arch)
+            GLib.idle_add(self._core_progress, fraction, message, arch, kernel_type)
 
         def worker() -> None:
             try:
-                path = install_core(progress, arch)
+                path = install_core(progress, arch, kernel_type)
             except Exception as exc:
-                GLib.idle_add(self._core_install_done, None, str(exc), arch)
+                GLib.idle_add(self._core_install_done, None, str(exc), arch, kernel_type)
             else:
-                GLib.idle_add(self._core_install_done, str(path), None, arch)
+                GLib.idle_add(self._core_install_done, str(path), None, arch, kernel_type)
 
         threading.Thread(target=worker, name="core-install", daemon=True).start()
 
-    def _core_progress(self, fraction: float, message: str, arch: str) -> bool:
-        row = self._core_tabs.get(arch)
+    def _core_progress(
+        self, fraction: float, message: str, arch: str, kernel_type: str
+    ) -> bool:
+        key = f"{arch}:{kernel_type}"
+        row = self._core_tabs.get(key)
         if row is not None:
             row.set_subtitle(f"{message} {int(fraction * 100)}%")
         return False
 
     def _core_install_done(
-        self, path: str | None, error: str | None, arch: str | None = None
+        self,
+        path: str | None,
+        error: str | None,
+        arch: str | None = None,
+        kernel_type: str = "xray",
     ) -> bool:
-        row = self._core_tabs.get(arch) if arch is not None else None
+        key = f"{arch}:{kernel_type}" if arch is not None else None
+        row = self._core_tabs.get(key) if key is not None else None
         if row is not None:
             row.set_subtitle(self._core_subtitle())
-            btn = self._core_buttons.get(arch) if arch is not None else None
+            btn = self._core_buttons.get(key)
             if btn is not None:
                 btn.set_sensitive(True)
                 btn.set_label("Скачать")
         if path:
             self.store.set_setting("core_path", path)
-            self._toast("Xray-core установлен")
+            label = "Amnezia" if kernel_type == "amnezia" else "Xray-core"
+            self._toast(f"{label} установлен")
         else:
-            self._toast(f"Не удалось установить Xray: {error}")
+            label = "Amnezia" if kernel_type == "amnezia" else "Xray-core"
+            self._toast(f"Не удалось установить {label}: {error}")
         return False
 
     def _open_data_dir(self, *_args) -> None:
@@ -1674,7 +1685,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ kernels
     def _show_kernels_dialog(self) -> None:
-        """Диалог скачивания ядра Xray-core под архитектуру пользователя."""
+        """Диалог скачивания ядра: Xray (первое), Amnezia (второе)."""
         dialog = Adw.Dialog()
         dialog.set_title("Ядра")
         dialog.set_content_width(700)
@@ -1697,34 +1708,63 @@ class MainWindow(Adw.ApplicationWindow):
         import platform as _platform
 
         arch = _platform.machine().lower()
-        asset = ASSETS.get(arch)
-        if asset is None:
-            # Нет сборки для этой архитектуры — показываем одну неактивную вкладку.
-            row = Adw.ActionRow(
-                title="Ядро",
-                subtitle=f"Сборка для архитектуры {arch} недоступна",
+        supported = arch in SUPPORTED_ARCHS
+
+        # Вкладка 1: ядро Xray
+        xray_asset = None
+        try:
+            xray_asset = asset_name("xray", arch)
+        except RuntimeError:
+            xray_asset = None
+        row_xray = Adw.ActionRow(
+            title="Ядро Xray",
+            subtitle=(f"Сборка {xray_asset}" if xray_asset else f"Для {arch} недоступно"),
+        )
+        btn_xray = Gtk.Button(label="Скачать")
+        if supported and xray_asset:
+            btn_xray.add_css_class("suggested-action")
+            btn_xray.connect(
+                "clicked",
+                lambda *_, a=arch, b=btn_xray, r=row_xray: self._install_core_for_arch(
+                    a, b, r, "xray"
+                ),
             )
-            btn = Gtk.Button(label="Скачать")
-            btn.add_css_class("flat")
-            btn.set_sensitive(False)
-            row.add_suffix(btn)
-            page = tab_view.add_page(row)
-            page.set_title("Ядро")
-            self._core_tabs[arch] = row
-            self._core_buttons[arch] = btn
         else:
-            row = Adw.ActionRow(
-                title="Ядро",
-                subtitle=f"Сборка {asset}",
+            btn_xray.add_css_class("flat")
+            btn_xray.set_sensitive(False)
+        row_xray.add_suffix(btn_xray)
+        page_xray = tab_view.add_page(row_xray)
+        page_xray.set_title("Xray")
+        self._core_tabs[f"{arch}:xray"] = row_xray
+        self._core_buttons[f"{arch}:xray"] = btn_xray
+
+        # Вкладка 2: ядро Amnezia
+        amnezia_asset = None
+        try:
+            amnezia_asset = asset_name("amnezia", arch)
+        except RuntimeError:
+            amnezia_asset = None
+        row_amnezia = Adw.ActionRow(
+            title="Ядро Amnezia",
+            subtitle=(f"Сборка {amnezia_asset}" if amnezia_asset else f"Для {arch} недоступно"),
+        )
+        btn_amnezia = Gtk.Button(label="Скачать")
+        if supported and amnezia_asset:
+            btn_amnezia.add_css_class("suggested-action")
+            btn_amnezia.connect(
+                "clicked",
+                lambda *_, a=arch, b=btn_amnezia, r=row_amnezia: self._install_core_for_arch(
+                    a, b, r, "amnezia"
+                ),
             )
-            btn = Gtk.Button(label="Скачать")
-            btn.add_css_class("suggested-action")  # синяя
-            btn.connect("clicked", lambda *_: self._install_core_for_arch(arch, btn, row))
-            row.add_suffix(btn)
-            page = tab_view.add_page(row)
-            page.set_title("Ядро")
-            self._core_tabs[arch] = row
-            self._core_buttons[arch] = btn
+        else:
+            btn_amnezia.add_css_class("flat")
+            btn_amnezia.set_sensitive(False)
+        row_amnezia.add_suffix(btn_amnezia)
+        page_amnezia = tab_view.add_page(row_amnezia)
+        page_amnezia.set_title("Amnezia")
+        self._core_tabs[f"{arch}:amnezia"] = row_amnezia
+        self._core_buttons[f"{arch}:amnezia"] = btn_amnezia
 
         scrolled.set_child(tab_view)
         toolbar.set_content(scrolled)

@@ -14,7 +14,8 @@ from pathlib import Path
 
 from . import paths
 
-RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
+XRAY_RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
+AMNEZIA_RELEASE_BASE = "https://github.com/amnezia-vpn/xray-core/releases/latest/download"
 USER_AGENT = "dma2ray/0.2"
 
 SUPPORTED_ARCHS = frozenset(
@@ -34,7 +35,7 @@ SUPPORTED_ARCHS = frozenset(
     }
 )
 
-ASSETS = {
+ASSETS_XRAY = {
     "x86_64": "Xray-linux-64.zip",
     "amd64": "Xray-linux-64.zip",
     "aarch64": "Xray-linux-arm64-v8a.zip",
@@ -49,15 +50,22 @@ ASSETS = {
     "riscv64": "Xray-linux-riscv64.zip",
 }
 
+ASSETS_AMNEZIA = dict(ASSETS_XRAY)
+
 Progress = Callable[[float, str], None]
 
 
-def asset_name(arch: str | None = None) -> str:
+def asset_name(kernel_type: str, arch: str | None = None) -> str:
     machine = (arch or platform.machine()).lower()
-    asset = ASSETS.get(machine)
+    assets = ASSETS_AMNEZIA if kernel_type == "amnezia" else ASSETS_XRAY
+    asset = assets.get(machine)
     if not asset:
-        raise RuntimeError(f"Нет сборки Xray для архитектуры {machine}")
+        raise RuntimeError(f"Нет сборки {kernel_type} для архитектуры {machine}")
     return asset
+
+
+def _release_base(kernel_type: str) -> str:
+    return AMNEZIA_RELEASE_BASE if kernel_type == "amnezia" else XRAY_RELEASE_BASE
 
 
 def _request(url: str) -> urllib.request.Request:
@@ -99,15 +107,18 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def install_core(progress: Progress | None = None, arch: str | None = None) -> Path:
-    asset = asset_name(arch)
+def install_core(
+    progress: Progress | None = None, arch: str | None = None, kernel_type: str = "xray"
+) -> Path:
+    asset = asset_name(kernel_type, arch)
     paths.CORE_BIN_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="dma2ray-core-", dir=str(paths.CACHE_DIR)) as tmp:
         tmpdir = Path(tmp)
         archive = tmpdir / asset
-        base_url = f"{RELEASE_BASE}/{asset}"
+        base_url = f"{_release_base(kernel_type)}/{asset}"
+        label = "Amnezia" if kernel_type == "amnezia" else "Xray-core"
         if progress:
-            progress(0.02, f"Загрузка {asset}…")
+            progress(0.02, f"Загрузка {label}…")
         _download(base_url, archive, progress)
         if progress:
             progress(0.96, "Проверка контрольной суммы…")
@@ -132,7 +143,7 @@ def install_core(progress: Progress | None = None, arch: str | None = None) -> P
 
         new_binary = extract_dir / "xray"
         if not new_binary.exists():
-            raise RuntimeError("В архиве Xray не найден бинарник xray")
+            raise RuntimeError(f"В архиве {label} не найден бинарник xray")
         new_binary.chmod(0o755)
         staged = paths.CORE_BIN_DIR / ".xray.new"
         shutil.copy2(new_binary, staged)

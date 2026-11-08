@@ -19,12 +19,12 @@ class AssetTests(unittest.TestCase):
         for machine, expected in cases.items():
             with self.subTest(machine=machine):
                 with mock.patch.object(installer.platform, "machine", return_value=machine):
-                    self.assertEqual(installer.asset_name(), expected)
+                    self.assertEqual(installer.asset_name("xray"), expected)
 
     def test_unknown_architecture(self) -> None:
         with mock.patch.object(installer.platform, "machine", return_value="mips"):
             with self.assertRaises(RuntimeError):
-                installer.asset_name()
+                installer.asset_name("xray")
 
 
 if __name__ == "__main__":
