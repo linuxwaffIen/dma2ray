@@ -17,11 +17,8 @@ from .installer import (
     current_arch,
     install_core,
 )
-<<<<<<< HEAD
 from .ping import tcp_ping
-=======
 from .ping import PING_TYPE_LABELS, PING_TYPES, ping_endpoint
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
 from .speedtest import SpeedResult, speed_test
 from .state import LOG_LEVELS, MODES, Profile, Store
 from .subscriptions import FetchResult, fetch_and_parse
@@ -132,13 +129,10 @@ dialog-host > dialog,
 dialog.bottom-sheet,
 dialog.floating {
     border-radius: 0;
-<<<<<<< HEAD
-=======
 }
 .dialog button.text-button, window button.text-button {
     min-width: 130px;
     min-height: 36px;
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
 }
 """
 def _fmt_time(timestamp: float) -> str:
@@ -160,8 +154,6 @@ def _latency_text(ms: int | None) -> str:
 
 _LATENCY_CLASSES = ("latency-good", "latency-ok", "latency-bad", "latency-unknown")
 
-<<<<<<< HEAD
-=======
 
 def _pick_icon(theme: Gtk.IconTheme | None, *candidates: str) -> str:
     if theme:
@@ -171,7 +163,6 @@ def _pick_icon(theme: Gtk.IconTheme | None, *candidates: str) -> str:
     return candidates[0] if candidates else ""
 
 
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, store: Store) -> None:
         super().__init__(
@@ -202,13 +193,10 @@ class MainWindow(Adw.ApplicationWindow):
         self._settings_reverting = False
         self._log_timeout: int | None = None
         self._log_dialog: Adw.Dialog | None = None
-<<<<<<< HEAD
         self._core = CoreManager(store, self._core_status_from_thread)
-=======
         self._core = CoreManager(
             store, self._core_status_from_thread, self._ask_password_dialog
         )
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         self._core_tabs: dict[str, Adw.ActionRow] = {}
         self._core_buttons: dict[str, Gtk.Button] = {}
         self._core_hints: dict[str, str] = {}
@@ -217,10 +205,7 @@ class MainWindow(Adw.ApplicationWindow):
             on_toggle=lambda: GLib.idle_add(self._toggle_connection),
             on_quit=lambda: GLib.idle_add(self.app.quit),
         )
-<<<<<<< HEAD
-=======
         self._install_icon()
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         self._apply_color_scheme()
         self._install_css()
         self._build_actions()
@@ -422,14 +407,11 @@ class MainWindow(Adw.ApplicationWindow):
         self.home_detail.set_wrap(True)
         self.home_detail.set_max_width_chars(44)
         box.append(self.home_detail)
-<<<<<<< HEAD
         self.big_icon = Gtk.Image.new_from_icon_name("network-vpn-symbolic")
-=======
         theme = self._icon_theme()
         self.big_icon = Gtk.Image.new_from_icon_name(
             _pick_icon(theme, "network-vpn-symbolic", "network-wired-symbolic", "security-high-symbolic")
         )
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         self.big_icon.set_pixel_size(48)
         self.big_button = Gtk.Button()
         self.big_button.set_child(self.big_icon)
@@ -1682,8 +1664,6 @@ class MainWindow(Adw.ApplicationWindow):
             return "Не найден — нажмите «Скачать»"
         return str(found)
 
-<<<<<<< HEAD
-=======
     @staticmethod
     def _kernel_subtitle(kernel_type: str, arch: str | None = None) -> str:
         path = paths.core_path(kernel_type, arch)
@@ -1691,7 +1671,6 @@ class MainWindow(Adw.ApplicationWindow):
             return str(path)
         return "Не найден — нажмите «Скачать»"
 
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
     def _install_core_for_arch(
         self, arch: str, btn: "Gtk.Button", row: "Adw.ActionRow | None" = None,
         kernel_type: str = "xray",
@@ -1735,12 +1714,9 @@ class MainWindow(Adw.ApplicationWindow):
             row.set_subtitle(self._core_hints.get(key, ""))
         if btn is not None:
             btn.set_sensitive(True)
-<<<<<<< HEAD
             btn.set_label("Обновить" if path else "Скачать")
-=======
             installed = bool(path) or paths.core_path(kernel_type, arch).is_file()
             btn.set_label("Обновить" if installed else "Скачать")
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         label = "Amnezia Xray" if kernel_type == "amnezia-xray" else "Xray-core"
         if path:
             if kernel_type == "xray":
@@ -1865,11 +1841,8 @@ class MainWindow(Adw.ApplicationWindow):
             title="Доступные ядра",
             description="Загрузка для вашей архитектуры. Новое ядро применится при следующем подключении.",
         )
-<<<<<<< HEAD
-=======
         self._core_tabs.clear()
         self._core_buttons.clear()
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         kernels = (
             ("xray", "Xray-core", "Официальное ядро XTLS", "applications-system-symbolic"),
             ("amnezia-xray", "Amnezia Xray", "Сборка Xray от Amnezia", "security-high-symbolic"),
@@ -1890,22 +1863,16 @@ class MainWindow(Adw.ApplicationWindow):
             icon.add_css_class("kernel-icon")
             row.add_prefix(icon)
 
-<<<<<<< HEAD
             btn = Gtk.Button(label="Скачать")
-=======
             installed = paths.core_path(kernel_type, machine).is_file()
             btn = Gtk.Button(label="Обновить" if installed else "Скачать")
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
             btn.add_css_class("suggested-action")
             btn.add_css_class("kernel-btn")
             btn.set_valign(Gtk.Align.CENTER)
             btn.set_sensitive(supported)
-<<<<<<< HEAD
             btn.set_tooltip_text(f"Скачать {title} для {machine}")
-=======
             action = "Обновить" if installed else "Скачать"
             btn.set_tooltip_text(f"{action} {title} для {machine}")
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
             btn.connect(
                 "clicked",
                 lambda *_, b=btn, r=row, kt=kernel_type: self._install_core_for_arch(
@@ -1920,15 +1887,12 @@ class MainWindow(Adw.ApplicationWindow):
         page.add(group)
         toolbar.set_content(page)
         dialog.set_child(toolbar)
-<<<<<<< HEAD
-=======
 
         def closed(*_args) -> None:
             self._core_tabs.clear()
             self._core_buttons.clear()
 
         dialog.connect("closed", closed)
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         dialog.present(self)
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:

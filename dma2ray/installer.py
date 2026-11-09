@@ -15,11 +15,8 @@ from pathlib import Path
 from . import paths
 
 RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
-<<<<<<< HEAD
 RELEASE_BASE_AMNEZIA_XRAY = "https://github.com/amnezia-vpn/xray-core/releases/latest/download"
-=======
 RELEASE_BASE_AMNEZIA_XRAY = "https://github.com/amnezia-vpn/amnezia-xray-core/releases/latest/download"
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
 USER_AGENT = "dma2ray/0.2"
 
 SUPPORTED_ARCHS = frozenset(
@@ -146,16 +143,13 @@ def _sha256(path: Path) -> str:
 def install_core(
     progress: Progress | None = None, arch: str | None = None, kernel_type: str = "xray"
 ) -> Path:
-<<<<<<< HEAD
     asset = asset_name(kernel_type, arch)
     paths.CORE_BIN_DIR.mkdir(parents=True, exist_ok=True)
-=======
     machine = arch or current_arch()
     asset = asset_name(kernel_type, machine)
     target_dir = paths.core_dir(kernel_type, machine)
     target_path = paths.core_path(kernel_type, machine)
     target_dir.mkdir(parents=True, exist_ok=True)
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
     with tempfile.TemporaryDirectory(prefix="dma2ray-core-", dir=str(paths.CACHE_DIR)) as tmp:
         tmpdir = Path(tmp)
         archive = tmpdir / asset
@@ -200,8 +194,5 @@ def install_core(
 
     if progress:
         progress(1.0, f"{kernel_type} установлен")
-<<<<<<< HEAD
     return paths.CORE_PATH
-=======
     return target_path
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155

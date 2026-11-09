@@ -508,7 +508,6 @@ class CoreManager:
         except FileNotFoundError:
             pass
 
-<<<<<<< HEAD
         args = [
             "--socket", str(paths.PRIV_SOCKET),
             "--xray", str(xray),
@@ -530,9 +529,7 @@ class CoreManager:
             else:
                 # Старый путь: сработает, но окно пароля будет общим.
                 command = [pkexec, paths.python_bin(), str(paths.PRIV_SCRIPT), *args]
-=======
         command, run_as_root = self._helper_command(xray)
->>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         helper_log = paths.CACHE_DIR / "helper.log"
         helper_log.parent.mkdir(parents=True, exist_ok=True)
         try:
