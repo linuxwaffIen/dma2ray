@@ -27,6 +27,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "ping_type": "tcp",
     "auto_ping": True,
     "sort_by_latency": False,
+    "color_scheme": "system",
 }
 
 LOG_LEVELS = ("debug", "info", "warning", "error")

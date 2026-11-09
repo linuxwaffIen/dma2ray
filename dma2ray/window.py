@@ -11,12 +11,14 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
-from .installer import (
+from .installer import(
+    HY_ASSETS,
     ASSETS_XRAY,
     SUPPORTED_ARCHS,
     asset_name,
     current_arch,
     install_core,
+    install_hysteria,
 )
 from .ping import tcp_ping
 from .ping import PING_TYPE_LABELS, PING_TYPES, ping_endpoint
@@ -25,7 +27,7 @@ from .state import LOG_LEVELS, MODES, Profile, Store
 from .subscriptions import FetchResult, fetch_and_parse
 from .sysproxy import SysProxyError
 from .tray import TrayController
-from .vless import VlessError, parse_vless
+from .hysteria import parse_any
 
 MODE_LABELS = (
     "Прокси (SOCKS5/HTTP)",
@@ -245,8 +247,8 @@ class MainWindow(Adw.ApplicationWindow):
         added = 0
         for uri in uris:
             try:
-                parsed = parse_vless(uri)
-            except VlessError as exc:
+                parsed = parse_any(uri)
+            except ValueError as exc:
                 self._toast(f"Не удалось импортировать: {exc}")
                 continue
             profile = self.store.add_profile(parsed.name, uri)
@@ -892,8 +894,8 @@ class MainWindow(Adw.ApplicationWindow):
     def _profile_parsed(self, profile: Profile):
         if profile.uri not in self._parsed:
             try:
-                self._parsed[profile.uri] = parse_vless(profile.uri)
-            except VlessError:
+                self._parsed[profile.uri] = parse_any(profile.uri)
+            except ValueError:
                 self._parsed[profile.uri] = None
         return self._parsed[profile.uri]
 
@@ -1120,8 +1122,8 @@ class MainWindow(Adw.ApplicationWindow):
             self._toast("Сначала добавьте и выберите профиль")
             return
         try:
-            parse_vless(profile.uri)
-        except VlessError as exc:
+            parse_any(profile.uri)
+        except ValueError as exc:
             self._toast(f"Профиль некорректен: {exc}")
             return
         tun = self.store.mode == "vpn"
@@ -1141,13 +1143,13 @@ class MainWindow(Adw.ApplicationWindow):
     def _quick_connect(self, *_args) -> None:
         text = self.quick_entry.get_text().strip()
         if not text:
-            self._toast("Вставьте ссылку vless:// или URL подписки")
+            self._toast("Вставьте ссылку vless://, hysteria2:// или URL подписки")
             return
         lowered = text.lower()
-        if lowered.startswith("vless://"):
+        if lowered.startswith(("vless://", "hysteria2://", "hy2://")):
             try:
-                parsed = parse_vless(text)
-            except VlessError as exc:
+                parsed = parse_any(text)
+            except ValueError as exc:
                 self._toast(f"Некорректная ссылка: {exc}")
                 return
             profile = self.store.add_profile(parsed.name, text)
@@ -1367,9 +1369,9 @@ class MainWindow(Adw.ApplicationWindow):
             if self._pending_quick_sub == sub_id:
                 self._pending_quick_sub = None
             if result.unsupported:
-                message = f"Нет VLESS-ссылок (пропущено {result.unsupported} других)"
+                message = f"Нет ссылок (пропущено {result.unsupported} других)"
             elif result.invalid:
-                message = f"Нет валидных VLESS-ссылок (ошибок: {result.invalid})"
+                message = f"Нет валидных ссылок (ошибок: {result.invalid})"
             else:
                 message = "В подписке не найдено ссылок"
             self.store.set_subscription_error(sub_id, message)
@@ -1428,7 +1430,7 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         header.set_title_widget(
-            Adw.WindowTitle(title="Новый профиль", subtitle="Импорт vless://")
+            Adw.WindowTitle(title="Новый профиль", subtitle="Импорт vless:// или hysteria2://")
         )
         cancel = Gtk.Button(label="Отмена")
         cancel.connect("clicked", lambda *_: dialog.close())
@@ -1441,7 +1443,7 @@ class MainWindow(Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
         group = Adw.PreferencesGroup(
             title="Ссылка",
-            description="Вставьте ссылку vless://, выданную сервером или панелью.",
+            description="Вставьте ссылку vless:// или hysteria2://, выданную сервером или панелью.",
         )
         link_row = Adw.EntryRow(title="vless://…")
         paste = Gtk.Button.new_from_icon_name("edit-paste-symbolic")
@@ -1476,8 +1478,8 @@ class MainWindow(Adw.ApplicationWindow):
                 add.set_sensitive(False)
                 return
             try:
-                parsed = parse_vless(uri)
-            except VlessError as exc:
+                parsed = parse_any(uri)
+            except ValueError as exc:
                 preview_row.set_subtitle("Некорректная ссылка")
                 error_label.set_text(str(exc))
                 error_label.set_visible(True)
@@ -1692,7 +1694,10 @@ class MainWindow(Adw.ApplicationWindow):
             GLib.idle_add(self._core_progress, fraction, message, arch, kernel_type)
         def worker() -> None:
             try:
-                path = install_core(progress, arch, kernel_type)
+                if kernel_type == "hysteria":
+                    path = install_hysteria(progress, arch)
+                else:
+                    path = install_core(progress, arch, kernel_type)
             except Exception as exc:
                 GLib.idle_add(self._core_install_done, None, str(exc), arch, kernel_type)
             else:
@@ -1778,7 +1783,11 @@ class MainWindow(Adw.ApplicationWindow):
         if del_btn is not None:
             del_btn.set_sensitive(True)
             del_btn.set_visible(installed)
-        label = "Amnezia Xray" if kernel_type == "amnezia-xray" else "Xray-core"
+        label = {
+            "xray": "Xray-core",
+            "amnezia-xray": "Amnezia Xray",
+            "hysteria": "Hysteria",
+        }.get(kernel_type, kernel_type)
         if path:
             if kernel_type == "xray":
                 self.store.set_setting("core_path", path)
@@ -1908,13 +1917,18 @@ class MainWindow(Adw.ApplicationWindow):
         kernels = (
             ("xray", "Xray-core", "Официальное ядро XTLS", "applications-system-symbolic"),
             ("amnezia-xray", "Amnezia Xray", "Сборка Xray от Amnezia", "security-high-symbolic"),
+            ("hysteria", "Hysteria 2", "QUIC-прокси от apernet", "network-wireless-symbolic"),
         )
         for kernel_type, title, hint, icon_name in kernels:
-            try:
-                asset_name(kernel_type, machine)
-                supported = machine in SUPPORTED_ARCHS
-            except RuntimeError:
-                supported = False
+            if kernel_type == "hysteria":
+                supported = machine in HY_ASSETS
+            else:
+                try:
+                    asset_name(kernel_type, machine)
+                    supported = machine in SUPPORTED_ARCHS
+                except RuntimeError:
+                    supported = False
+
             key = f"{machine}:{kernel_type}"
             subtitle = hint if supported else f"Недоступно для {machine}"
             self._core_hints[key] = subtitle

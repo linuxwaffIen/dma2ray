@@ -321,52 +321,61 @@ class CoreManager:
                     self._raise_if_cancelled()
                     xray = self._xray_path()
                     self._check_core(xray)
-                    parsed = parse_vless(profile.uri)
-                    self._emit(
-                        CoreStatus("starting", profile.id, tun, "Определение адреса сервера…")
-                    )
-                    address = self._resolve(parsed.address, parsed.port)
-                    self._raise_if_cancelled()
-                    settings = dict(self.store.settings)
-                    config = build_config(
-                        parsed,
-                        tun=tun,
-                        socks_port=int(settings["socks_port"]),
-                        http_port=int(settings["http_port"]),
-                        log_level=str(settings["log_level"]),
-                        address_override=address,
-                    )
-                    self._write_config(config)
-                    self._emit(
-                        CoreStatus("starting", profile.id, tun, "Проверка конфигурации…")
-                    )
-                    self._validate(xray)
-                    self._raise_if_cancelled()
-                    paths.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-                    if tun:
-                        self._start_tun(xray)
+                    parsed = parse_any(profile.uri)
+                    if isinstance(parsed, HysteriaProfile):
+                        binary = find_hysteria()
+                        if binary is None:
+                           raise CoreError("Hysteria не найдена. Скачайте её в меню «Ядра».")
+                        address = self._resolve(parsed.address, parsed.port)
+                        cfg = build_hysteria_config(parsed, tun=tun, socks_port=..., http_port=..., address_override=address)
+                        self._write_config(cfg, paths.HY_CONFIG_FILE)   # сделайте путь параметром
+                        argv = [str(binary), "client", "-c", str(paths.HY_CONFIG_FILE)]
                     else:
-                        self._start_direct(xray)
-                    self._emit(CoreStatus("running", profile.id, tun, "Подключено"))
-                except Exception as exc:
-                    self._stop_internal(shutdown_helper=True, notify=False)
-                    if self._cancel.is_set() or self._intentional:
-                        self._emit(CoreStatus("stopped"))
-                        return
-                    message = str(exc) or exc.__class__.__name__
-                    self._emit(
-                        CoreStatus(
-                            "error",
-                            profile.id,
-                            tun,
-                            "Ошибка запуска",
-                            message,
-                            _tail(paths.LOG_FILE),
+                        self._emit(
+                            CoreStatus("starting", profile.id, tun, "Определение адреса сервера…")
                         )
-                    )
+                        address = self._resolve(parsed.address, parsed.port)
+                        self._raise_if_cancelled()
+                        settings = dict(self.store.settings)
+                        config = build_config(
+                            parsed,
+                            tun=tun,
+                            socks_port=int(settings["socks_port"]),
+                            http_port=int(settings["http_port"]),
+                            log_level=str(settings["log_level"]),
+                            address_override=address,
+                        )
+                        self._write_config(config)
+                        self._emit(
+                           CoreStatus("starting", profile.id, tun, "Проверка конфигурации…")
+                        )
+                        self._validate(xray)
+                        self._raise_if_cancelled()
+                        paths.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                        if tun:
+                            self._start_tun(xray)
+                        else:
+                            self._start_direct(xray)
+                        self._emit(CoreStatus("running", profile.id, tun, "Подключено"))
+                except Exception as exc:
+                        self._stop_internal(shutdown_helper=True, notify=False)
+                        if self._cancel.is_set() or self._intentional:
+                            self._emit(CoreStatus("stopped"))
+                            return
+                        message = str(exc) or exc.__class__.__name__
+                        self._emit(
+                            CoreStatus(
+                                "error",
+                                profile.id,
+                                tun,
+                                "Ошибка запуска",
+                                message,
+                                _tail(paths.LOG_FILE),
+                            )
+                        )
         finally:
-            with self._lock:
-                self._starting = False
+                with self._lock:
+                    self._starting = False
 
     def _raise_if_cancelled(self) -> None:
         if self._cancel.is_set():
@@ -827,3 +836,10 @@ class CoreManager:
             lines = [line.strip() for line in output.splitlines() if line.strip()]
             detail = lines[-1] if lines else "неизвестная ошибка"
             raise CoreError(f"{detail}\n{output[-3000:]}")
+
+def find_hysteria() -> Path | None:
+    local = paths.CORE_BIN_DIR / "hysteria"
+    if local.is_file():
+        return local
+    found = shutil.which("hysteria")
+    return Path(found) if found else None

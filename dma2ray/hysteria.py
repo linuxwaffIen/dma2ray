@@ -89,18 +89,29 @@ def build_hysteria_config(
     }
     if p.obfs:
         cfg["obfs"] = {"type": "salamander", "salamander": {"password": p.obfs_password}}
+        return cfg
     if tun:
-        key = "ipv6Exclude" if ":" in server_ip else "ipv4Exclude"
-        suffix = "/128" if ":" in server_ip else "/32"
+        v4_ex = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"]
+        v6_ex = ["fc00::/7", "fe80::/10"]
+        if ":" in server_ip:
+            v6_ex.append(server_ip + "/128")  # иначе QUIC пойдёт сам в себя
+        else:
+            v4_ex.append(server_ip + "/32")
         cfg["tun"] = {
             "name": "hytun",
             "mtu": 1500,
             "timeout": "5m",
-            "address": {"ipv4": "100.100.100.101/30"},
-            "route": {key: [server_ip + suffix]},  # иначе QUIC пойдёт сам в себя
+            "address": {
+                "ipv4": "100.100.100.101/30",
+                "ipv6": "2001::ffff:ffff:ffff:fff1/126",
+            },
+            "route": {
+                "ipv4": ["0.0.0.0/0"],
+                "ipv6": ["2000::/3"],
+                "ipv4Exclude": v4_ex,
+                "ipv6Exclude": v6_ex,
+            },
         }
-    return cfg
-
 
 def parse_any(uri: str):
     """Единая точка входа: vless:// или hysteria2://."""

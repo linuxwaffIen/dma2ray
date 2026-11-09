@@ -71,6 +71,8 @@ def core_path(kernel_type: str = "xray", arch: str | None = None) -> Path:
 
 LOG_FILE = CACHE_DIR / "xray.log"
 CONFIG_FILE = CACHE_DIR / "config.json"
+HY_PATH = CORE_BIN_DIR / "hysteria"
+HY_CONFIG_FILE = CACHE_DIR / "config-hy.yaml"
 PRIV_SOCKET = RUNTIME_DIR / "privileged.sock"
 TRAY_SOCKET = RUNTIME_DIR / "tray.sock"
 ICON_NAME = "io.github.dma2ray.Dma2ray"

@@ -5,6 +5,9 @@ import gzip
 import re
 import urllib.error
 import urllib.request
+
+from .hysteria import parse_hysteria2
+from .vless import parse_vless
 from dataclasses import dataclass, field
 
 from .vless import (
@@ -20,18 +23,8 @@ from .vless import (
 
 MAX_SUBSCRIPTION_BYTES = 5 * 1024 * 1024
 USER_AGENT = "dma2ray/0.2"
-SUPPORTED_PREFIXES = (
-    "vless://",
-    "trojan://",
-    "ss://",
-    "vmess://",
-    "hysteria2://",
-    "hy2://",
-    "wireguard://",
-    "amnezia://",
-)
-KNOWN_PREFIXES = ("tuic://",)
-
+SUPPORTED_PREFIXES = ("vless://", "hysteria2://", "hy2://")
+KNOWN_PREFIXES = ("tuic://", "trojan://", "ss://", "vmess://", "wireguard://", "amnezia://")
 
 @dataclass
 class FetchResult:
@@ -85,27 +78,13 @@ def parse_subscription(text: str) -> FetchResult:
             if line in seen:
                 continue
             seen.add(line)
-            profile = None
-            parse_error: str | None = None
-            if lowered.startswith("vless://"):
-                profile = _safe_parse(parse_vless, line)
-            elif lowered.startswith("trojan://"):
-                profile = _safe_parse(parse_trojan, line)
-            elif lowered.startswith("ss://"):
-                profile = _safe_parse(parse_shadowsocks, line)
-            elif lowered.startswith("vmess://"):
-                profile = _safe_parse(parse_vmess, line)
-            elif lowered.startswith("hysteria2://") or lowered.startswith("hy2://"):
-                profile = _safe_parse(parse_hysteria2, line)
-            elif lowered.startswith("wireguard://"):
-                profile = _safe_parse(parse_wireguard, line)
-            elif lowered.startswith("amnezia://"):
-                profile = _safe_parse(parse_amnezia, line)
+            parser = parse_vless if lowered.startswith("vless://") else parse_hysteria2
+            profile = _safe_parse(parser, line)
             if profile is not None:
                 result.entries.append((profile.name, line))
             else:
-                if parse_error is None:
-                    parse_error = "Не удалось распарсить ссылку"
+                result.invalid += 1
+                result.errors.append("Не удалось распарсить ссылку")
                 result.invalid += 1
                 result.errors.append(str(parse_error))
         elif lowered.startswith(KNOWN_PREFIXES):
