@@ -24,11 +24,13 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "log_level": "warning",
     "close_to_tray": True,
     "ping_timeout": 4.0,
+    "ping_type": "tcp",
     "auto_ping": True,
     "sort_by_latency": False,
 }
 
 LOG_LEVELS = ("debug", "info", "warning", "error")
+PING_TYPES = ("tcp", "http", "icmp")
 
 # Режимы подключения: локальный прокси, системный прокси ОС, TUN-ВПН.
 MODES = ("proxy", "system", "vpn")

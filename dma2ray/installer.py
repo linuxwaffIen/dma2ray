@@ -15,7 +15,55 @@ from pathlib import Path
 from . import paths
 
 RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
+RELEASE_BASE_AMNEZIA_XRAY = "https://github.com/amnezia-vpn/amnezia-xray-core/releases/latest/download"
 USER_AGENT = "dma2ray/0.2"
+
+SUPPORTED_ARCHS = frozenset(
+    {
+        "x86_64",
+        "amd64",
+        "aarch64",
+        "arm64",
+        "armv7l",
+        "armv7",
+        "armv6l",
+        "i386",
+        "i486",
+        "i586",
+        "i686",
+        "riscv64",
+    }
+)
+
+ASSETS_XRAY = {
+    "x86_64": "Xray-linux-64.zip",
+    "amd64": "Xray-linux-64.zip",
+    "aarch64": "Xray-linux-arm64-v8a.zip",
+    "arm64": "Xray-linux-arm64-v8a.zip",
+    "armv7l": "Xray-linux-arm32-v7a.zip",
+    "armv7": "Xray-linux-arm32-v7a.zip",
+    "armv6l": "Xray-linux-arm32-v6.zip",
+    "i386": "Xray-linux-32.zip",
+    "i486": "Xray-linux-32.zip",
+    "i586": "Xray-linux-32.zip",
+    "i686": "Xray-linux-32.zip",
+    "riscv64": "Xray-linux-riscv64.zip",
+}
+
+ASSETS_AMNEZIA_XRAY = {
+    "x86_64": "Xray-linux-64.zip",
+    "amd64": "Xray-linux-64.zip",
+    "aarch64": "Xray-linux-arm64-v8a.zip",
+    "arm64": "Xray-linux-arm64-v8a.zip",
+    "armv7l": "Xray-linux-arm32-v7a.zip",
+    "armv7": "Xray-linux-arm32-v7a.zip",
+    "armv6l": "Xray-linux-arm32-v6.zip",
+    "i386": "Xray-linux-32.zip",
+    "i486": "Xray-linux-32.zip",
+    "i586": "Xray-linux-32.zip",
+    "i686": "Xray-linux-32.zip",
+    "riscv64": "Xray-linux-riscv64.zip",
+}
 
 ASSETS = {
     "x86_64": "Xray-linux-64.zip",
@@ -35,12 +83,21 @@ ASSETS = {
 Progress = Callable[[float, str], None]
 
 
-def asset_name() -> str:
-    machine = platform.machine().lower()
-    asset = ASSETS.get(machine)
+def current_arch() -> str:
+    return platform.machine().lower()
+
+
+def asset_name(kernel_type: str = "xray", arch: str | None = None) -> str:
+    machine = (arch or current_arch())
+    assets = ASSETS_AMNEZIA_XRAY if kernel_type == "amnezia-xray" else ASSETS_XRAY
+    asset = assets.get(machine)
     if not asset:
-        raise RuntimeError(f"Нет сборки Xray для архитектуры {machine}")
+        raise RuntimeError(f"Нет сборки {kernel_type} для архитектуры {machine}")
     return asset
+
+
+def release_base(kernel_type: str = "xray") -> str:
+    return RELEASE_BASE_AMNEZIA_XRAY if kernel_type == "amnezia-xray" else RELEASE_BASE
 
 
 def _request(url: str) -> urllib.request.Request:
@@ -82,13 +139,18 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def install_core(progress: Progress | None = None) -> Path:
-    asset = asset_name()
-    paths.CORE_BIN_DIR.mkdir(parents=True, exist_ok=True)
+def install_core(
+    progress: Progress | None = None, arch: str | None = None, kernel_type: str = "xray"
+) -> Path:
+    machine = arch or current_arch()
+    asset = asset_name(kernel_type, machine)
+    target_dir = paths.core_dir(kernel_type, machine)
+    target_path = paths.core_path(kernel_type, machine)
+    target_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="dma2ray-core-", dir=str(paths.CACHE_DIR)) as tmp:
         tmpdir = Path(tmp)
         archive = tmpdir / asset
-        base_url = f"{RELEASE_BASE}/{asset}"
+        base_url = f"{release_base(kernel_type)}/{asset}"
         if progress:
             progress(0.02, f"Загрузка {asset}…")
         _download(base_url, archive, progress)
@@ -115,18 +177,18 @@ def install_core(progress: Progress | None = None) -> Path:
 
         new_binary = extract_dir / "xray"
         if not new_binary.exists():
-            raise RuntimeError("В архиве Xray не найден бинарник xray")
+            raise RuntimeError(f"В архиве {kernel_type} не найден бинарник xray")
         new_binary.chmod(0o755)
-        staged = paths.CORE_BIN_DIR / ".xray.new"
+        staged = target_dir / ".xray.new"
         shutil.copy2(new_binary, staged)
         staged.chmod(0o755)
-        os.replace(staged, paths.CORE_PATH)
+        os.replace(staged, target_path)
 
         for extra in ("geoip.dat", "geosite.dat", "LICENSE", "README.md"):
             source = extract_dir / extra
             if source.exists():
-                shutil.copy2(source, paths.CORE_BIN_DIR / extra)
+                shutil.copy2(source, target_dir / extra)
 
     if progress:
-        progress(1.0, "Xray-core установлен")
-    return paths.CORE_PATH
+        progress(1.0, f"{kernel_type} установлен")
+    return target_path

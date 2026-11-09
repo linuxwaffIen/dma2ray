@@ -39,7 +39,9 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual(config["routing"]["rules"], [])
 
     def test_tun_mode(self) -> None:
-        config = build_config(make_profile(), tun=True, socks_port=11080, http_port=11081)
+        config = build_config(
+            make_profile(), tun=True, socks_port=11080, http_port=11081, enable_ipv6=True
+        )
         tags = [inbound["tag"] for inbound in config["inbounds"]]
         self.assertEqual(tags, ["tun-in", "socks-in", "http-in"])
         tun = config["inbounds"][0]
@@ -60,12 +62,20 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual(len(dns_out), 1)
         self.assertEqual(dns_out[0]["protocol"], "dns")
 
+    def test_tun_mode_ipv4_only(self) -> None:
+        config = build_config(
+            make_profile(), tun=True, socks_port=11080, http_port=11081, enable_ipv6=False
+        )
+        tun = config["inbounds"][0]
+        self.assertEqual(tun["settings"]["gateway"], [TUN_GATEWAY])
+        self.assertEqual(tun["settings"]["autoSystemRoutingTable"], ["0.0.0.0/0"])
+
         rules = config["routing"]["rules"]
         self.assertTrue(rules)
         private_rules = [rule for rule in rules if rule.get("ip") == PRIVATE_NETWORKS]
         self.assertEqual(len(private_rules), 1)
         self.assertEqual(private_rules[0]["outboundTag"], "direct")
-        self.assertIn("::/0", tun["settings"]["autoSystemRoutingTable"])
+        self.assertNotIn("::/0", tun["settings"]["autoSystemRoutingTable"])
 
     def test_ports_must_differ(self) -> None:
         with self.assertRaises(ValueError):

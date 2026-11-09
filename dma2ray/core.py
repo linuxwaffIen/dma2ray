@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import select
 import shutil
+
+try:
+    import pty
+except ImportError:  # Windows: pseudo-terminal fallback недоступен
+    pty = None
 import signal
 import socket
 import subprocess
@@ -16,6 +23,9 @@ from .config import build_config, is_ip
 from .state import Profile, Store
 from .vless import VlessError, parse_vless
 
+SYSTEM_DIR = Path("/usr/libexec/dma2ray")
+SYSTEM_HELPER = SYSTEM_DIR / "dma2ray-helper"
+SYSTEM_XRAY = SYSTEM_DIR / "xray"
 
 class CoreError(RuntimeError):
     pass
@@ -42,13 +52,155 @@ def _tail(path: Path, limit: int = 16000) -> str:
         return ""
 
 
+def _read_since(path: Path, offset: int, limit: int = 8000) -> str:
+    try:
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            return handle.read(limit).decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _is_tty_auth_error(path: Path, offset: int) -> bool:
+    """pkexec без polkit-агента не может открыть /dev/tty и падает сразу."""
+    text = _read_since(path, offset).lower()
+    markers = (
+        "controlling terminal",
+        "textual authentication agent",
+        "/dev/tty",
+        "no such device or address",
+    )
+    return any(marker in text for marker in markers)
+
+
+def _looks_like_password_prompt(buffer: bytes) -> bool:
+    text = buffer.decode("utf-8", errors="replace")[-400:]
+    text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text).lower()
+    stripped = text.rstrip()
+    if not stripped or stripped.endswith("\n"):
+        return False
+    return ("password" in text or "пароль" in text) and stripped.endswith(":")
+
+
+def _clean_prompt(buffer: bytes) -> str:
+    text = buffer.decode("utf-8", errors="replace")
+    text = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    relevant = [
+        line
+        for line in lines
+        if any(
+            k in line.lower()
+            for k in ("authenticat", "авториз", "root", "password", "пароль")
+        )
+    ]
+    return "\n".join(relevant[-2:]) if relevant else (lines[-1] if lines else "Password:")
+
+
+def _read_pty(fd: int, timeout: float) -> bytes:
+    try:
+        ready, _, _ = select.select([fd], [], [], timeout)
+    except (OSError, ValueError):
+        return b""
+    if not ready:
+        return b""
+    try:
+        return os.read(fd, 4096)
+    except OSError:
+        return b""
+
+
+def _close_fd(fd: int | None) -> None:
+    if fd is None:
+        return
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+
+
+def _drain_tty(fd: int, log_handle) -> None:
+    try:
+        while True:
+            try:
+                ready, _, _ = select.select([fd], [], [], 1.0)
+            except (OSError, ValueError):
+                break
+            if not ready:
+                continue
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            try:
+                log_handle.write(chunk)
+            except Exception:
+                pass
+    finally:
+        _close_fd(fd)
+        try:
+            log_handle.close()
+        except Exception:
+            pass
+
+
+class _PtyProcess:
+    """Минимальная обёртка над pid из pty.fork() (нужен только интерфейс Popen)."""
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._code: int | None = None
+
+    def poll(self) -> int | None:
+        if self._code is not None:
+            return self._code
+        try:
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError:
+            self._code = 0
+            return self._code
+        if pid == 0:
+            return None
+        try:
+            self._code = os.waitstatus_to_exitcode(status)
+        except ValueError:
+            self._code = 1
+        return self._code
+
+    def wait(self, timeout: float | None = None) -> int:
+        deadline = None if timeout is None else time.monotonic() + timeout
+        while True:
+            code = self.poll()
+            if code is not None:
+                return code
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired("pkexec", timeout)
+            time.sleep(0.05)
+
+    def terminate(self) -> None:
+        try:
+            os.kill(self.pid, signal.SIGTERM)
+        except OSError:
+            pass
+
+    def kill(self) -> None:
+        try:
+            os.kill(self.pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
 def find_core(store: Store) -> Path | None:
-    """Locate the Xray binary: explicit path → downloaded → PATH."""
+    """Locate the Xray binary: explicit path → downloaded (xray/amnezia) → PATH."""
     configured = store.core_path()
     if configured.is_file():
         return configured
-    if paths.CORE_PATH.is_file():
-        return paths.CORE_PATH
+    for kernel_type in ("xray", "amnezia-xray"):
+        candidate = paths.core_path(kernel_type)
+        if candidate.is_file():
+            return candidate
     found = shutil.which("xray")
     return Path(found) if found else None
 
@@ -92,9 +244,10 @@ class _HelperClient:
 class CoreManager:
     """Owns the Xray process and, for TUN mode, the privileged helper."""
 
-    def __init__(self, store: Store, on_status) -> None:
+    def __init__(self, store: Store, on_status, ask_password=None) -> None:
         self.store = store
         self.on_status = on_status
+        self.ask_password = ask_password
         self._lock = threading.RLock()
         self._status = CoreStatus("stopped")
         self._direct_proc: subprocess.Popen | None = None
@@ -295,7 +448,51 @@ class CoreManager:
         )
         thread.start()
 
+    def _helper_command(self, xray: Path) -> tuple[list[str], bool]:
+        getuid = getattr(os, "getuid", lambda: 0)
+        getgid = getattr(os, "getgid", lambda: 0)
+        geteuid = getattr(os, "geteuid", lambda: 0)
+        run_as_root = geteuid() == 0
+        use_system = (
+            not run_as_root and SYSTEM_HELPER.is_file() and SYSTEM_XRAY.is_file()
+        )
+        target_xray = SYSTEM_XRAY if use_system else xray
+        args = [
+            "--socket",
+            str(paths.PRIV_SOCKET),
+            "--xray",
+            str(target_xray),
+            "--config",
+            str(paths.CONFIG_FILE),
+            "--log",
+            str(paths.LOG_FILE),
+            "--uid",
+            str(getuid()),
+            "--gid",
+            str(getgid()),
+        ]
+        if run_as_root:
+            command = [paths.python_bin(), str(paths.PRIV_SCRIPT), *args]
+        else:
+            pkexec = shutil.which("pkexec")
+            if not pkexec:
+                raise CoreError(
+                    "Для TUN нужен pkexec (polkit). Установите polkit "
+                    "или запустите приложение от root."
+                )
+            if use_system:
+                command = [pkexec, str(SYSTEM_HELPER), *args]
+            else:
+                command = [pkexec, paths.python_bin(), str(paths.PRIV_SCRIPT), *args]
+        return command, run_as_root
+
     def _ensure_helper(self, xray: Path) -> None:
+        use_system = (
+            os.geteuid() != 0 and SYSTEM_HELPER.is_file() and SYSTEM_XRAY.is_file()
+        )
+        if use_system:
+            xray = SYSTEM_XRAY  # root запускает только свою копию ядра
+
         key = (str(xray), str(paths.CONFIG_FILE), str(paths.LOG_FILE))
         if self._helper is not None and self._helper_key == key:
             try:
@@ -311,74 +508,106 @@ class CoreManager:
         except FileNotFoundError:
             pass
 
-        if os.geteuid() == 0:
-            command = [
-                paths.python_bin(),
-                str(paths.PRIV_SCRIPT),
-                "--socket",
-                str(paths.PRIV_SOCKET),
-                "--xray",
-                str(xray),
-                "--config",
-                str(paths.CONFIG_FILE),
-                "--log",
-                str(paths.LOG_FILE),
-                "--uid",
-                str(os.getuid()),
-                "--gid",
-                str(os.getgid()),
-            ]
-        else:
-            pkexec = shutil.which("pkexec")
-            if not pkexec:
-                raise CoreError(
-                    "Для TUN нужен pkexec (polkit). Установите polkit или запустите приложение от root."
-                )
-            command = [
-                pkexec,
-                paths.python_bin(),
-                str(paths.PRIV_SCRIPT),
-                "--socket",
-                str(paths.PRIV_SOCKET),
-                "--xray",
-                str(xray),
-                "--config",
-                str(paths.CONFIG_FILE),
-                "--log",
-                str(paths.LOG_FILE),
-                "--uid",
-                str(os.getuid()),
-                "--gid",
-                str(os.getgid()),
-            ]
-
+        command, run_as_root = self._helper_command(xray)
         helper_log = paths.CACHE_DIR / "helper.log"
+        helper_log.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            start_offset = helper_log.stat().st_size
+        except OSError:
+            start_offset = 0
+
+        use_tty = pty is not None and not run_as_root
+        proc, sock = self._spawn_and_connect(command, helper_log, use_tty=use_tty)
+
+        self._helper_proc = proc
+        sock.settimeout(45)
+        self._helper = _HelperClient(sock)
+        self._helper_key = key
+
+    def _spawn_and_connect(
+        self, command: list[str], helper_log: Path, *, use_tty: bool
+    ) -> tuple[object, socket.socket]:
+        master: int | None = None
+        proc: object | None = None
         log_handle = helper_log.open("ab", buffering=0)
         try:
-            proc = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=log_handle,
-            )
-        except OSError as exc:
-            log_handle.close()
-            raise CoreError(f"Не удалось запустить privileged helper: {exc}") from exc
-        finally:
+            if use_tty:
+                proc, master = self._popen_tty(command)
+            else:
+                try:
+                    proc = subprocess.Popen(
+                        command,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=log_handle,
+                    )
+                except OSError as exc:
+                    raise CoreError(
+                        f"Не удалось запустить privileged helper: {exc}"
+                    ) from exc
+            sock = self._wait_helper_socket(proc, helper_log, master, log_handle)
+        except BaseException:
+            if proc is not None:
+                self._terminate_proc(proc)
+            _close_fd(master)
             try:
                 log_handle.close()
             except Exception:
                 pass
-        self._helper_proc = proc
+            raise
 
+        if master is not None:
+            threading.Thread(
+                target=_drain_tty,
+                args=(master, log_handle),
+                name="pkexec-tty",
+                daemon=True,
+            ).start()
+        else:
+            try:
+                log_handle.close()
+            except Exception:
+                pass
+        return proc, sock
+
+    @staticmethod
+    def _popen_tty(command: list[str]) -> tuple[object, int]:
+        if pty is None:  # pragma: no cover - Windows
+            raise CoreError("Псевдотерминал недоступен на этой платформе")
+        pid, master = pty.fork()
+        if pid == 0:  # pragma: no cover - выполняется в дочернем процессе
+            try:
+                os.execvp(command[0], command)
+            except OSError:
+                os._exit(127)
+        return _PtyProcess(pid), master
+
+    @staticmethod
+    def _terminate_proc(proc) -> None:
+        try:
+            proc.terminate()
+        except OSError:
+            pass
+        try:
+            proc.wait(timeout=3)
+        except (subprocess.TimeoutExpired, OSError):
+            try:
+                proc.kill()
+            except OSError:
+                pass
+
+    def _wait_helper_socket(
+        self,
+        proc,
+        helper_log: Path,
+        master: int | None,
+        log_handle,
+    ) -> socket.socket:
         deadline = time.monotonic() + 120
-        sock: socket.socket | None = None
+        prompt_buffer = b""
+        secret = b""
         while time.monotonic() < deadline:
             if self._cancel.is_set():
-                try:
-                    proc.terminate()
-                except OSError:
-                    pass
                 raise CoreError("Запуск отменён")
             code = proc.poll()
             if code is not None:
@@ -387,27 +616,45 @@ class CoreManager:
                     "Авторизация отменена или privileged helper завершился"
                     + (f"\n{detail}" if detail else "")
                 )
+            if master is not None:
+                chunk = _read_pty(master, 0.2)
+                if chunk:
+                    if secret:
+                        chunk = chunk.replace(secret, b"***")
+                    try:
+                        log_handle.write(chunk)
+                    except Exception:
+                        pass
+                    prompt_buffer = (prompt_buffer + chunk)[-4000:]
+                    if _looks_like_password_prompt(prompt_buffer):
+                        password = (
+                            self.ask_password(_clean_prompt(prompt_buffer))
+                            if self.ask_password is not None
+                            else None
+                        )
+                        if password is None:
+                            raise CoreError("Авторизация отменена")
+                        secret = password.encode("utf-8")
+                        try:
+                            os.write(master, secret + b"\n")
+                        except OSError as exc:
+                            raise CoreError(
+                                f"Не удалось передать пароль: {exc}"
+                            ) from exc
+                        prompt_buffer = b""
             try:
                 candidate = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 candidate.settimeout(2.0)
                 candidate.connect(str(paths.PRIV_SOCKET))
-                sock = candidate
-                break
+                return candidate
             except OSError:
                 try:
                     candidate.close()
                 except Exception:
                     pass
-                time.sleep(0.2)
-        if sock is None:
-            try:
-                proc.terminate()
-            except OSError:
-                pass
-            raise CoreError("Истекло время ожидания авторизации pkexec (120 с)")
-        sock.settimeout(45)
-        self._helper = _HelperClient(sock)
-        self._helper_key = key
+                if master is None:
+                    time.sleep(0.2)
+        raise CoreError("Истекло время ожидания авторизации pkexec (120 с)")
 
     def _monitor_tun(self) -> None:
         while True:

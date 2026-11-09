@@ -1,21 +1,23 @@
 from __future__ import annotations
-
+import platform
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-
 import gi
-
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
-
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
-from .installer import install_core
-from .ping import tcp_ping
+from .installer import (
+    ASSETS_XRAY,
+    SUPPORTED_ARCHS,
+    asset_name,
+    current_arch,
+    install_core,
+)
+from .ping import PING_TYPE_LABELS, PING_TYPES, ping_endpoint
 from .speedtest import SpeedResult, speed_test
 from .state import LOG_LEVELS, MODES, Profile, Store
 from .subscriptions import FetchResult, fetch_and_parse
@@ -29,7 +31,22 @@ MODE_LABELS = (
     "ВПН (TUN, нужен root)",
 )
 
+SCHEMES = {
+    "system": Adw.ColorScheme.DEFAULT,
+    "light": Adw.ColorScheme.FORCE_LIGHT,
+    "dark": Adw.ColorScheme.FORCE_DARK,
+}
+SCHEME_KEYS = tuple(SCHEMES)
+SCHEME_LABELS = ("Как в системе", "Светлая", "Тёмная")
+
 CSS = b"""
+@define-color accent_bg_color #2f6bd8;
+@define-color accent_fg_color #ffffff;
+@define-color accent_color #3a7be8;
+
+switch:checked {
+    background-color: #2f6bd8;
+}
 .latency-good { color: #26a269; }
 .latency-ok { color: #e5a50a; }
 .latency-bad { color: #c01c28; }
@@ -37,21 +54,21 @@ CSS = b"""
 .error-text { color: #c01c28; }
 .section-hint { color: alpha(currentColor, 0.65); }
 .latency-pill {
-  background-color: alpha(currentColor, 0.14);
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-size: 0.9em;
-  font-weight: bold;
+    background-color: alpha(currentColor, 0.14);
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.9em;
+    font-weight: bold;
 }
 .flag-big { font-size: 26px; }
 .home-status { font-size: 1.4em; font-weight: 800; }
 .connect-big {
-  min-width: 128px;
-  min-height: 128px;
-  border-radius: 64px;
-  padding: 0;
-  color: #ffffff;
-  transition: background-color 400ms ease, box-shadow 400ms ease;
+    min-width: 128px;
+    min-height: 128px;
+    border-radius: 64px;
+    padding: 0;
+    color: #ffffff;
+    transition: background-color 400ms ease, box-shadow 400ms ease;
 }
 .connect-idle { background-color: #26a269; }
 .connect-idle:hover { background-color: #2ec27e; }
@@ -59,32 +76,68 @@ CSS = b"""
 .connect-active { background-color: #c01c28; }
 .connect-active:hover { background-color: #e01c28; }
 .server-card {
-  background-color: alpha(currentColor, 0.07);
-  border-radius: 18px;
-  padding: 14px 16px;
-  transition: background-color 300ms ease;
+    background-color: alpha(currentColor, 0.07);
+    border-radius: 18px;
+    padding: 14px 16px;
+    transition: background-color 300ms ease;
 }
 .server-card:hover { background-color: alpha(currentColor, 0.12); }
-
-/* Blue bars (GTK picks text color itself - readable on any system theme). */
-.top-bar,
-.bottom-bar,
-headerbar,
-viewswitcherbar,
-actionbar {
-  background-color: #14386e;
+.main-headerbar,
+.main-switcherbar {
+    background-color: #14386e;
 }
-viewswitcherbar button:checked {
-  background-color: #2f6bd8;
+.main-switcherbar {
+    min-height: 44px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+.main-switcherbar button {
+    min-width: 140px;
+    min-height: 40px;
+    font-size: 1.1em;
+}
+.main-switcherbar button:checked {
+    background-color: #2f6bd8;
+}
+dialog button.suggested-action {
+    background-color: #2f6bd8;
+    color: #ffffff;
+}
+dialog button.suggested-action:hover {
+    background-color: #3a7be8;
+}
+.kernel-btn {
+    min-width: 112px;
+    min-height: 34px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.kernel-icon {
+    background-color: alpha(currentColor, 0.08);
+    border-radius: 12px;
+    padding: 10px;
+}
+window,
+window.background,
+window.csd,
+window.csd decoration {
+    border-radius: 0;
+    box-shadow: none;
+}
+dialog-host > dialog,
+dialog.bottom-sheet,
+dialog.floating {
+    border-radius: 0;
+}
+.dialog button.text-button, window button.text-button {
+    min-width: 130px;
+    min-height: 36px;
 }
 """
-
-
 def _fmt_time(timestamp: float) -> str:
     if not timestamp:
         return "никогда"
     return time.strftime("%d.%m.%Y %H:%M", time.localtime(timestamp))
-
 
 def _latency_class(ms: int | None) -> str:
     if ms is None:
@@ -95,12 +148,18 @@ def _latency_class(ms: int | None) -> str:
         return "latency-ok"
     return "latency-bad"
 
-
 def _latency_text(ms: int | None) -> str:
     return "—" if ms is None else f"{ms} мс"
 
-
 _LATENCY_CLASSES = ("latency-good", "latency-ok", "latency-bad", "latency-unknown")
+
+
+def _pick_icon(theme: Gtk.IconTheme | None, *candidates: str) -> str:
+    if theme:
+        for name in candidates:
+            if theme.has_icon(name):
+                return name
+    return candidates[0] if candidates else ""
 
 
 class MainWindow(Adw.ApplicationWindow):
@@ -133,16 +192,22 @@ class MainWindow(Adw.ApplicationWindow):
         self._settings_reverting = False
         self._log_timeout: int | None = None
         self._log_dialog: Adw.Dialog | None = None
-        self._core = CoreManager(store, self._core_status_from_thread)
+        self._core = CoreManager(
+            store, self._core_status_from_thread, self._ask_password_dialog
+        )
+        self._core_tabs: dict[str, Adw.ActionRow] = {}
+        self._core_buttons: dict[str, Gtk.Button] = {}
+        self._core_hints: dict[str, str] = {}
         self._tray = TrayController(
             on_show=lambda: GLib.idle_add(self._present_from_tray),
             on_toggle=lambda: GLib.idle_add(self._toggle_connection),
             on_quit=lambda: GLib.idle_add(self.app.quit),
         )
+        self._install_icon()
+        self._apply_color_scheme()
         self._install_css()
         self._build_actions()
         self._build_ui()
-        self._install_icon()
         self._refresh_all()
         self._update_status(self._core.status)
         if find_core(self.store) is None:
@@ -150,7 +215,17 @@ class MainWindow(Adw.ApplicationWindow):
         self.connect("close-request", self._on_close_request)
         if self.store.settings.get("tray_enabled", True):
             self._try_start_tray(silent=True)
-
+    def _apply_color_scheme(self) -> None:
+        key = str(self.store.settings.get("color_scheme", "system"))
+        Adw.StyleManager.get_default().set_color_scheme(
+            SCHEMES.get(key, Adw.ColorScheme.DEFAULT)
+            )
+    def _settings_scheme(self, row: Adw.ComboRow, _param) -> None:
+        index = int(row.get_selected())
+        if 0 <= index < len(SCHEME_KEYS):
+             self.store.set_setting("color_scheme", SCHEME_KEYS[index])
+             self._apply_color_scheme()
+    
     # ---------------------------------------------------------------- public
     @property
     def tray_active(self) -> bool:
@@ -226,14 +301,24 @@ class MainWindow(Adw.ApplicationWindow):
 
     @staticmethod
     def _install_icon() -> None:
-        if not paths.ICON_FILE.exists():
-            return
+        paths.ensure_icons()
         display = Gdk.Display.get_default()
         if not display:
             return
         try:
             theme = Gtk.IconTheme.get_for_display(display)
-            theme.add_search_path(str(paths.ICON_FILE.parent))
+            theme.add_search_path(str(paths.icons_dir()))
+            if paths.ICON_FILE.exists():
+                theme.add_search_path(str(paths.ICON_FILE.parent))
+            for root in ("/usr/share/icons/Adwaita", "/usr/local/share/icons/Adwaita"):
+                adw = Path(root)
+                if adw.is_dir():
+                    theme.add_search_path(str(adw))
+                    symbolic = adw / "symbolic"
+                    if symbolic.is_dir():
+                        for sub in symbolic.iterdir():
+                            if sub.is_dir():
+                                theme.add_search_path(str(sub))
         except Exception:
             pass
 
@@ -241,12 +326,11 @@ class MainWindow(Adw.ApplicationWindow):
         self.toast_overlay = Adw.ToastOverlay()
         toolbar = Adw.ToolbarView()
         self.header = Adw.HeaderBar()
+        self.header.add_css_class("main-headerbar")
         self.window_title = Adw.WindowTitle(title=paths.APP_TITLE, subtitle="Отключено")
         self.header.set_title_widget(self.window_title)
-        # В шапке — только название и меню: кнопок управления окном нет.
         self.header.set_show_start_title_buttons(False)
         self.header.set_show_end_title_buttons(False)
-
         menu = Gio.Menu()
         menu.append("Добавить профиль", "win.add-profile")
         menu.append("Добавить подписку", "win.add-subscription")
@@ -256,6 +340,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append("Настройки", "win.settings")
         menu.append("Журнал Xray", "win.show-log")
         menu.append("О программе", "win.about")
+        menu.append("Ядра", "win.kernels")
         menu.append("Выход", "win.quit")
         menu_button = Gtk.MenuButton()
         menu_button.set_icon_name("open-menu-symbolic")
@@ -263,31 +348,25 @@ class MainWindow(Adw.ApplicationWindow):
         menu_button.set_tooltip_text("Меню")
         self.header.pack_end(menu_button)
         toolbar.add_top_bar(self.header)
-
         self.view_stack = Adw.ViewStack()
         self.view_stack.set_vexpand(True)
-        # Плавное переключение между вкладками (по умолчанию выключено).
         self.view_stack.set_enable_transitions(True)
         self.view_stack.set_transition_duration(350)
-
         home = self._build_home_page()
         self.view_stack.add_titled(home, "home", "Главная")
-
         servers = self._build_servers_page()
         self.view_stack.add_titled(servers, "servers", "Серверы")
-
         settings = self._build_settings_page()
         self.view_stack.add_titled(settings, "settings", "Настройки")
-
         self.switcher_bar = Adw.ViewSwitcherBar()
         self.switcher_bar.set_stack(self.view_stack)
         self.switcher_bar.set_reveal(True)
+        self.switcher_bar.add_css_class("main-switcherbar")
         self._strip_switcher_icons()
         self.view_stack.connect(
             "notify::visible-child", lambda *_: self._strip_switcher_icons()
         )
         toolbar.add_bottom_bar(self.switcher_bar)
-
         toolbar.set_content(self.view_stack)
         self.toast_overlay.set_child(toolbar)
         self.set_content(self.toast_overlay)
@@ -309,7 +388,6 @@ class MainWindow(Adw.ApplicationWindow):
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled.set_vexpand(True)
-
         clamp = Adw.Clamp()
         clamp.set_maximum_size(540)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
@@ -317,20 +395,20 @@ class MainWindow(Adw.ApplicationWindow):
         box.set_margin_end(18)
         box.set_margin_top(24)
         box.set_margin_bottom(24)
-
         self.home_status = Gtk.Label(label="Отключено")
         self.home_status.add_css_class("home-status")
         self.home_status.set_halign(Gtk.Align.CENTER)
         box.append(self.home_status)
-
         self.home_detail = Gtk.Label(label="Выберите профиль")
         self.home_detail.add_css_class("section-hint")
         self.home_detail.set_halign(Gtk.Align.CENTER)
         self.home_detail.set_wrap(True)
         self.home_detail.set_max_width_chars(44)
         box.append(self.home_detail)
-
-        self.big_icon = Gtk.Image.new_from_icon_name("network-vpn-symbolic")
+        theme = self._icon_theme()
+        self.big_icon = Gtk.Image.new_from_icon_name(
+            _pick_icon(theme, "network-vpn-symbolic", "network-wired-symbolic", "security-high-symbolic")
+        )
         self.big_icon.set_pixel_size(48)
         self.big_button = Gtk.Button()
         self.big_button.set_child(self.big_icon)
@@ -340,7 +418,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.big_button.set_tooltip_text("Подключить или отключить")
         self.big_button.connect("clicked", lambda *_: self._toggle_connection())
         box.append(self.big_button)
-
         self.server_card = Gtk.Button()
         self.server_card.add_css_class("flat")
         self.server_card.add_css_class("server-card")
@@ -353,7 +430,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.card_flag = Gtk.Label(label="🌐")
         self.card_flag.add_css_class("flag-big")
         card.append(self.card_flag)
-
         card_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         card_text.set_hexpand(True)
         self.card_name = Gtk.Label(label="Нет профиля", xalign=0.0)
@@ -365,7 +441,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.card_addr.set_ellipsize(Pango.EllipsizeMode.END)
         card_text.append(self.card_addr)
         card.append(card_text)
-
         card_right = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         card_right.set_valign(Gtk.Align.CENTER)
         self.card_latency = Gtk.Label(label="")
@@ -375,7 +450,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.server_card.set_child(card)
         card.append(card_right)
         box.append(self.server_card)
-
         self.home_hint = Gtk.Label(
             label="Профилей пока нет. Вставьте ссылку vless:// или URL подписки ниже."
         )
@@ -384,7 +458,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.home_hint.add_css_class("section-hint")
         self.home_hint.set_visible(False)
         box.append(self.home_hint)
-
         self.quick_group = Adw.PreferencesGroup(
             title="Быстрое подключение",
             description="Вставьте ссылку vless:// или URL подписки — профиль добавится и подключится.",
@@ -398,10 +471,12 @@ class MainWindow(Adw.ApplicationWindow):
         self.quick_entry.connect("entry-activated", self._quick_connect)
         self.quick_group.add(self.quick_entry)
         box.append(self.quick_group)
-
         self.speed_group = Adw.PreferencesGroup(title="Скорость и задержка")
         speed_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
-        self.speed_button = Gtk.Button.new_from_icon_name("network-transmit-receive-symbolic")
+        speed_icon = _pick_icon(
+            theme, "network-transmit-receive-symbolic", "network-receive-symbolic", "view-refresh-symbolic"
+        )
+        self.speed_button = Gtk.Button.new_from_icon_name(speed_icon)
         self.speed_button.add_css_class("flat")
         self.speed_button.set_tooltip_text("Измерить задержку и скорость через SOCKS5")
         self.speed_button.connect("clicked", lambda *_: self._run_speed_test())
@@ -412,14 +487,13 @@ class MainWindow(Adw.ApplicationWindow):
         self.speed_group.add(self.speed_latency_row)
         self.speed_group.add(self.speed_down_row)
         box.append(self.speed_group)
-
         clamp.set_child(box)
         scrolled.set_child(clamp)
         return scrolled
 
     def _build_servers_page(self) -> Gtk.Widget:
+        theme = self._icon_theme()
         page = Adw.PreferencesPage()
-
         self.profiles_group = Adw.PreferencesGroup(title="Серверы")
         profile_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.sort_button = Gtk.Button.new_from_icon_name("view-list-symbolic")
@@ -427,9 +501,14 @@ class MainWindow(Adw.ApplicationWindow):
         self.sort_button.set_tooltip_text("Сортировать по задержке")
         self.sort_button.connect("clicked", lambda *_: self._toggle_sort())
         profile_actions.append(self.sort_button)
-        self.ping_all_button = Gtk.Button.new_from_icon_name(
-            "network-cellular-signal-excellent-symbolic"
+        ping_icon = _pick_icon(
+            theme,
+            "network-cellular-signal-excellent-symbolic",
+            "network-wireless-signal-excellent-symbolic",
+            "network-transmit-receive-symbolic",
+            "view-refresh-symbolic",
         )
+        self.ping_all_button = Gtk.Button.new_from_icon_name(ping_icon)
         self.ping_all_button.add_css_class("flat")
         self.ping_all_button.set_tooltip_text("Проверить задержку всех серверов")
         self.ping_all_button.connect("clicked", lambda *_: self._ping_all())
@@ -441,7 +520,6 @@ class MainWindow(Adw.ApplicationWindow):
         profile_actions.append(add_profile_button)
         self.profiles_group.set_header_suffix(profile_actions)
         page.add(self.profiles_group)
-
         self.subs_group = Adw.PreferencesGroup(title="Подписки")
         sub_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.update_subs_button = Gtk.Button.new_from_icon_name("view-refresh-symbolic")
@@ -458,12 +536,10 @@ class MainWindow(Adw.ApplicationWindow):
         sub_actions.append(add_sub_button)
         self.subs_group.set_header_suffix(sub_actions)
         page.add(self.subs_group)
-
         return page
 
     def _build_settings_page(self) -> Adw.PreferencesPage:
         page = Adw.PreferencesPage()
-
         connection = Adw.PreferencesGroup(
             title="Подключение",
             description="Изменения применятся при следующем подключении.",
@@ -476,7 +552,6 @@ class MainWindow(Adw.ApplicationWindow):
         mode_row.set_selected(MODES.index(self.store.mode))
         mode_row.connect("notify::selected", self._settings_mode)
         connection.add(mode_row)
-
         socks_row = Adw.SpinRow(
             title="SOCKS5-порт",
             subtitle="Локальный прокси для приложений",
@@ -490,7 +565,6 @@ class MainWindow(Adw.ApplicationWindow):
         socks_row.set_digits(0)
         socks_row.connect("notify::value", lambda row, _p: self._settings_port("socks_port", row))
         connection.add(socks_row)
-
         http_row = Adw.SpinRow(
             title="HTTP-порт",
             subtitle="Локальный HTTP-прокси",
@@ -504,7 +578,6 @@ class MainWindow(Adw.ApplicationWindow):
         http_row.set_digits(0)
         http_row.connect("notify::value", lambda row, _p: self._settings_port("http_port", row))
         connection.add(http_row)
-
         log_row = Adw.ComboRow(title="Уровень журнала Xray")
         log_row.set_model(Gtk.StringList.new(list(LOG_LEVELS)))
         current_log = str(self.store.settings.get("log_level", "warning"))
@@ -512,7 +585,19 @@ class MainWindow(Adw.ApplicationWindow):
         log_row.connect("notify::selected", self._settings_log_level)
         connection.add(log_row)
         page.add(connection)
-
+        appearance = Adw.PreferencesGroup(title="Оформление")
+        scheme_row = Adw.ComboRow(
+            title="Тема",
+            subtitle="По умолчанию берётся из системы",
+            model=Gtk.StringList.new(list(SCHEME_LABELS)),
+        )
+        current = str(self.store.settings.get("color_scheme", "system"))
+        scheme_row.set_selected(
+            SCHEME_KEYS.index(current) if current in SCHEME_KEYS else 0
+        )
+        scheme_row.connect("notify::selected", self._settings_scheme)
+        appearance.add(scheme_row)
+        page.add(appearance)
         interface = Adw.PreferencesGroup(title="Серверы и задержки")
         auto_ping_row = Adw.SwitchRow(
             title="Автопроверка задержки",
@@ -524,7 +609,6 @@ class MainWindow(Adw.ApplicationWindow):
             lambda row, _p: self.store.set_setting("auto_ping", row.get_active()),
         )
         interface.add(auto_ping_row)
-
         sort_row = Adw.SwitchRow(
             title="Сортировать по задержке",
             subtitle="Сначала самые быстрые серверы",
@@ -535,7 +619,6 @@ class MainWindow(Adw.ApplicationWindow):
             lambda row, _p: self._settings_sort(row),
         )
         interface.add(sort_row)
-
         timeout_row = Adw.SpinRow(
             title="Таймаут проверки задержки",
             subtitle="Секунды на проверку одного сервера",
@@ -552,8 +635,19 @@ class MainWindow(Adw.ApplicationWindow):
             lambda row, _p: self.store.set_setting("ping_timeout", float(row.get_value())),
         )
         interface.add(timeout_row)
+        ping_type_row = Adw.ComboRow(
+            title="Тип пинга",
+            subtitle="Метод измерения задержки до серверов",
+            model=Gtk.StringList.new([PING_TYPE_LABELS[k] for k in PING_TYPES]),
+        )
+        current_pt = str(self.store.settings.get("ping_type", "tcp"))
+        ping_type_row.set_selected(PING_TYPES.index(current_pt) if current_pt in PING_TYPES else 0)
+        ping_type_row.connect(
+            "notify::selected",
+            lambda row, _p: self.store.set_setting("ping_type", PING_TYPES[row.get_selected()]),
+        )
+        interface.add(ping_type_row)
         page.add(interface)
-
         startup = Adw.PreferencesGroup(title="Запуск и трей")
         autostart_row = Adw.SwitchRow(
             title="Автозапуск при входе",
@@ -562,7 +656,6 @@ class MainWindow(Adw.ApplicationWindow):
         autostart_row.set_active(autostart.is_enabled())
         autostart_row.connect("notify::active", self._settings_autostart)
         startup.add(autostart_row)
-
         tray_row = Adw.SwitchRow(
             title="Иконка в системном трее",
             subtitle="Отдельный GTK3-хелпер, совместимый с XFCE/GNOME/KDE",
@@ -570,7 +663,6 @@ class MainWindow(Adw.ApplicationWindow):
         tray_row.set_active(bool(self.store.settings.get("tray_enabled", True)))
         tray_row.connect("notify::active", self._settings_tray)
         startup.add(tray_row)
-
         close_row = Adw.SwitchRow(
             title="Закрывать окно в трей",
             subtitle="Приложение продолжит работать в фоне",
@@ -581,7 +673,6 @@ class MainWindow(Adw.ApplicationWindow):
             lambda row, _p: self.store.set_setting("close_to_tray", row.get_active()),
         )
         startup.add(close_row)
-
         auto_row = Adw.SwitchRow(title="Подключаться при запуске")
         auto_row.set_active(bool(self.store.settings.get("auto_connect", False)))
         auto_row.connect(
@@ -590,35 +681,6 @@ class MainWindow(Adw.ApplicationWindow):
         )
         startup.add(auto_row)
         page.add(startup)
-
-        core_group = Adw.PreferencesGroup(
-            title="Ядро",
-            description="Xray-core требуется для VLESS, прокси и TUN.",
-        )
-        self.core_row = Adw.ActionRow(title="Xray-core", subtitle=self._core_subtitle())
-        self.core_install_button = Gtk.Button(label="Скачать")
-        self.core_install_button.add_css_class("flat")
-        self.core_install_button.set_tooltip_text("Скачать последнюю версию Xray-core")
-        self.core_install_button.connect("clicked", lambda *_: self._install_core_async())
-        self.core_row.add_suffix(self.core_install_button)
-        core_group.add(self.core_row)
-
-        choose_row = Adw.ActionRow(
-            title="Указать путь к Xray",
-            subtitle="Если ядро уже установлено в системе",
-        )
-        choose_button = Gtk.Button(label="Выбрать")
-        choose_button.add_css_class("flat")
-        choose_button.connect("clicked", lambda *_: self._choose_core())
-        choose_row.add_suffix(choose_button)
-        core_group.add(choose_row)
-
-        check_row = Adw.ActionRow(title="Проверить ядро", subtitle="Запустить xray version")
-        check_row.set_activatable(True)
-        check_row.connect("activated", lambda *_: self._check_core_async())
-        core_group.add(check_row)
-        page.add(core_group)
-
         diagnostics = Adw.PreferencesGroup(title="Диагностика")
         log_action = Adw.ActionRow(title="Журнал Xray", subtitle="Последние сообщения ядра")
         log_action.set_activatable(True)
@@ -632,7 +694,6 @@ class MainWindow(Adw.ApplicationWindow):
         data_action.connect("activated", self._open_data_dir)
         diagnostics.add(data_action)
         page.add(diagnostics)
-
         return page
 
     # --------------------------------------------------------------- actions
@@ -646,13 +707,13 @@ class MainWindow(Adw.ApplicationWindow):
             "settings": lambda *_: self.view_stack.set_visible_child_name("settings"),
             "show-log": lambda *_: self._show_log(),
             "about": lambda *_: self._about_dialog(),
+            "kernels": lambda *_: self._show_kernels_dialog(),
             "quit": lambda *_: self.app.quit(),
         }
         for name, callback in simple.items():
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", callback)
             self.add_action(action)
-
         string_actions = {
             "ping": self._ping_action,
             "rename": self._rename_action,
@@ -733,7 +794,6 @@ class MainWindow(Adw.ApplicationWindow):
             self.profiles_group.add(row)
             self._profile_rows.append(row)
             return
-
         selected_id = self.store.settings.get("selected_profile_id")
         for profile in self._sorted_profiles():
             parsed = self._profile_parsed(profile)
@@ -743,24 +803,20 @@ class MainWindow(Adw.ApplicationWindow):
             row.connect(
                 "activated", lambda *_args, pid=profile.id: self._select_profile(pid)
             )
-
             check = Gtk.Image.new_from_icon_name("object-select-symbolic")
             check.set_visible(profile.id == selected_id)
             row.add_prefix(check)
-
             flag = flag_for(profile.name, parsed.address if parsed else "")
             if flag:
                 flag_label = Gtk.Label(label=flag)
                 flag_label.set_margin_start(6)
                 row.add_prefix(flag_label)
-
             box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
             box.set_valign(Gtk.Align.CENTER)
             latency = Gtk.Label(label=_latency_text(self.latencies.get(profile.id)))
             self._set_pill(latency, self.latencies.get(profile.id))
             box.append(latency)
             self._latency_labels[profile.id] = latency
-
             menu = Gio.Menu()
             for label, action in (
                 ("Подключить", "win.connect"),
@@ -835,6 +891,48 @@ class MainWindow(Adw.ApplicationWindow):
         return self._parsed[profile.uri]
 
     # ---------------------------------------------------------------- status
+    def _ask_password_dialog(self, prompt: str) -> str | None:
+        """Запрос пароля root из рабочего потока TUN (диалог — в UI-потоке)."""
+        done = threading.Event()
+        result: dict[str, str | None] = {"password": None}
+
+        def show() -> bool:
+            clean = prompt.strip()
+            heading = "Требуется пароль root" if "root" in clean.lower() else "Требуется авторизация"
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                modal=True,
+                heading=heading,
+                body=(
+                    "Для запуска VPN в режиме TUN нужны права администратора.\n"
+                    f"{clean}"
+                ),
+            )
+            entry = Gtk.PasswordEntry()
+            entry.set_show_peek_icon(True)
+            entry.connect("activate", lambda *_: dialog.response("ok"))
+            dialog.set_extra_child(entry)
+            dialog.add_response("cancel", "Отмена")
+            dialog.add_response("ok", "Подтвердить")
+            dialog.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response("ok")
+            dialog.set_close_response("cancel")
+
+            def on_response(_dialog: Adw.MessageDialog, response: str) -> None:
+                if response == "ok":
+                    result["password"] = entry.get_text()
+                done.set()
+                dialog.destroy()
+
+            dialog.connect("response", on_response)
+            dialog.present()
+            return False
+
+        GLib.idle_add(show)
+        if not done.wait(timeout=180):
+            return None
+        return result["password"]
+
     def _core_status_from_thread(self, status: CoreStatus) -> None:
         GLib.idle_add(self._apply_core_status, status)
 
@@ -849,7 +947,6 @@ class MainWindow(Adw.ApplicationWindow):
         selected = self.store.selected_profile
         mode = self._mode_text()
         state = status.state
-
         if state == "running":
             profile = self.store.get_profile(status.profile_id) or selected
             subtitle = f"{profile.name} · {mode}" if profile else mode
@@ -883,9 +980,7 @@ class MainWindow(Adw.ApplicationWindow):
             self._set_connect_button("Подключиться", "network-vpn-symbolic")
             self.home_status.set_text("Отключено")
             self.home_detail.set_text(subtitle)
-
         self._update_server_card(status)
-
         profile_name = ""
         if state in ("running", "starting", "error") and status.profile_id:
             profile = self.store.get_profile(status.profile_id)
@@ -932,6 +1027,10 @@ class MainWindow(Adw.ApplicationWindow):
         label.add_css_class(_latency_class(ms))
         label.set_text(_latency_text(ms))
 
+    def _icon_theme(self) -> Gtk.IconTheme | None:
+        display = self.get_display() or Gdk.Display.get_default()
+        return Gtk.IconTheme.get_for_display(display) if display else None
+
     def _set_connect_button(
         self,
         label: str,
@@ -940,7 +1039,8 @@ class MainWindow(Adw.ApplicationWindow):
         sensitive: bool = True,
         destructive: bool = False,
     ) -> None:
-        self.big_icon.set_from_icon_name(icon)
+        chosen = _pick_icon(self._icon_theme(), icon, "network-vpn-symbolic", "security-high-symbolic")
+        self.big_icon.set_from_icon_name(chosen)
         self.big_button.set_sensitive(sensitive)
         for css in ("connect-idle", "connect-busy", "connect-active"):
             self.big_button.remove_css_class(css)
@@ -969,7 +1069,6 @@ class MainWindow(Adw.ApplicationWindow):
             self._sysproxy_applied = True
             http_port = int(self.store.settings.get("http_port", 10809))
             socks_port = int(self.store.settings.get("socks_port", 10808))
-
             def worker() -> None:
                 try:
                     sysproxy.apply(http_port, socks_port)
@@ -977,7 +1076,6 @@ class MainWindow(Adw.ApplicationWindow):
                     GLib.idle_add(self._sysproxy_failed, str(exc))
                 else:
                     GLib.idle_add(self._toast, "Системный прокси включён")
-
             try:
                 self._fetch_pool.submit(worker)
             except RuntimeError:
@@ -1028,7 +1126,6 @@ class MainWindow(Adw.ApplicationWindow):
         profile = self.store.get_profile(profile_id)
         if profile:
             self._toast(f"Выбран профиль: {profile.name}")
-        # При смене сервера в режиме ВПН (TUN) переподключаемся автоматически.
         status = self._core.status
         if status.state == "running" and self.store.mode == "vpn":
             self._start_selected()
@@ -1074,8 +1171,17 @@ class MainWindow(Adw.ApplicationWindow):
         if label:
             label.set_text("…")
         timeout = float(self.store.settings.get("ping_timeout", 4.0))
+        ping_type = str(self.store.settings.get("ping_type", "tcp"))
+        use_tls = getattr(parsed, "security", "") in ("tls", "reality", "xtls")
         try:
-            future = self._ping_pool.submit(tcp_ping, parsed.address, parsed.port, timeout)
+            future = self._ping_pool.submit(
+                ping_endpoint,
+                parsed.address,
+                parsed.port,
+                ping_type=ping_type,
+                timeout=timeout,
+                use_tls=use_tls,
+            )
         except RuntimeError:
             return
         self._pending_pings += 1
@@ -1142,14 +1248,12 @@ class MainWindow(Adw.ApplicationWindow):
         self.speed_latency_row.set_subtitle("Измерение…")
         self.speed_down_row.set_subtitle("Измерение…")
         socks_port = int(self.store.settings.get("socks_port", 10808))
-
         def worker() -> None:
             try:
                 result = speed_test("127.0.0.1", socks_port)
             except Exception as exc:  # pragma: no cover - defensive
                 result = SpeedResult(error=str(exc) or exc.__class__.__name__)
             GLib.idle_add(self._finish_speed_test, result)
-
         self._speed_pool.submit(worker)
 
     def _finish_speed_test(self, result: SpeedResult) -> bool:
@@ -1183,7 +1287,6 @@ class MainWindow(Adw.ApplicationWindow):
         add.set_sensitive(False)
         header.pack_end(add)
         toolbar.add_top_bar(header)
-
         page = Adw.PreferencesPage()
         group = Adw.PreferencesGroup()
         name_row = Adw.EntryRow(title="Название")
@@ -1193,14 +1296,11 @@ class MainWindow(Adw.ApplicationWindow):
         page.add(group)
         toolbar.set_content(page)
         dialog.set_child(toolbar)
-
         def update_sensitive(*_args) -> None:
             add.set_sensitive(
                 url_row.get_text().strip().startswith(("http://", "https://"))
             )
-
         url_row.connect("changed", update_sensitive)
-
         def on_add(*_args) -> None:
             url = url_row.get_text().strip()
             if not url.startswith(("http://", "https://")):
@@ -1212,7 +1312,6 @@ class MainWindow(Adw.ApplicationWindow):
             self._refresh_all()
             self._toast("Подписка добавлена, загружаю профили…")
             self._update_subscription(sub.id)
-
         add.connect("clicked", on_add)
         url_row.connect("entry-activated", lambda *_: on_add())
         dialog.present(self)
@@ -1257,7 +1356,6 @@ class MainWindow(Adw.ApplicationWindow):
             self._toast(f"Ошибка подписки «{sub.name}»: {message}")
             self._rebuild_subscriptions()
             return False
-
         if not result.entries:
             if self._pending_quick_sub == sub_id:
                 self._pending_quick_sub = None
@@ -1271,13 +1369,11 @@ class MainWindow(Adw.ApplicationWindow):
             self._toast(f"Подписка «{sub.name}»: {message}")
             self._rebuild_subscriptions()
             return False
-
         count = self.store.replace_subscription_profiles(sub_id, result.entries)
         details = f"Обновлено: {count} профилей"
         if result.unsupported:
             details += f", пропущено {result.unsupported}"
         self._toast(f"«{sub.name}»: {details}")
-
         if self._pending_quick_sub == sub_id:
             self._pending_quick_sub = None
             profiles = self.store.profiles_for_subscription(sub_id)
@@ -1286,7 +1382,6 @@ class MainWindow(Adw.ApplicationWindow):
                 self._refresh_all()
                 self._start_selected()
                 return False
-
         self._refresh_all()
         return False
 
@@ -1302,7 +1397,6 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.add_response("delete", "Удалить")
         dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_close_response("cancel")
-
         def on_response(dialog_obj, result) -> None:
             try:
                 response = dialog_obj.choose_finish(result)
@@ -1317,7 +1411,6 @@ class MainWindow(Adw.ApplicationWindow):
             if active_sub == sub_id or not self.store.profiles:
                 self._core.stop()
             self._toast("Подписка удалена")
-
         dialog.choose(self, None, on_response)
 
     # ---------------------------------------------------------------- profiles
@@ -1338,7 +1431,6 @@ class MainWindow(Adw.ApplicationWindow):
         add.set_sensitive(False)
         header.pack_end(add)
         toolbar.add_top_bar(header)
-
         page = Adw.PreferencesPage()
         group = Adw.PreferencesGroup(
             title="Ссылка",
@@ -1367,9 +1459,7 @@ class MainWindow(Adw.ApplicationWindow):
         page.add(group)
         toolbar.set_content(page)
         dialog.set_child(toolbar)
-
         parsed_holder: dict[str, object] = {}
-
         def update(*_args) -> None:
             uri = link_row.get_text().strip()
             error_label.set_visible(False)
@@ -1389,15 +1479,12 @@ class MainWindow(Adw.ApplicationWindow):
             parsed_holder["profile"] = parsed
             preview_row.set_subtitle(parsed.detail())
             add.set_sensitive(True)
-
         link_row.connect("changed", update)
-
         def on_paste(*_args) -> None:
             display = Gdk.Display.get_default()
             if not display:
                 return
             clipboard = display.get_clipboard()
-
             def on_text(_clipboard, result) -> None:
                 try:
                     text = clipboard.read_text_finish(result)
@@ -1405,11 +1492,8 @@ class MainWindow(Adw.ApplicationWindow):
                     return
                 if text:
                     link_row.set_text(text.strip().splitlines()[0])
-
             clipboard.read_text_async(None, on_text)
-
         paste.connect("clicked", on_paste)
-
         def on_add(*_args) -> None:
             parsed = parsed_holder.get("profile")
             if parsed is None:
@@ -1423,7 +1507,6 @@ class MainWindow(Adw.ApplicationWindow):
             dialog.close()
             self._refresh_all()
             self._toast(f"Профиль «{profile.name}» добавлен")
-
         add.connect("clicked", on_add)
         link_row.connect("entry-activated", lambda *_: on_add())
         dialog.present(self)
@@ -1443,7 +1526,6 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.add_response("save", "Сохранить")
         dialog.set_default_response("save")
         dialog.set_close_response("cancel")
-
         def on_response(dialog_obj, result) -> None:
             try:
                 response = dialog_obj.choose_finish(result)
@@ -1453,7 +1535,6 @@ class MainWindow(Adw.ApplicationWindow):
                 return
             self.store.rename_profile(profile_id, entry.get_text())
             self._refresh_all()
-
         dialog.choose(self, None, on_response)
 
     def _remove_profile_dialog(self, profile_id: str) -> None:
@@ -1468,7 +1549,6 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.add_response("delete", "Удалить")
         dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.set_close_response("cancel")
-
         def on_response(dialog_obj, result) -> None:
             try:
                 response = dialog_obj.choose_finish(result)
@@ -1482,7 +1562,6 @@ class MainWindow(Adw.ApplicationWindow):
                 self._core.stop()
             self._refresh_all()
             self._toast("Профиль удалён")
-
         dialog.choose(self, None, on_response)
 
     # ---------------------------------------------------------------- settings
@@ -1582,43 +1661,67 @@ class MainWindow(Adw.ApplicationWindow):
             return "Не найден — нажмите «Скачать»"
         return str(found)
 
-    def _install_core_async(self) -> None:
+    @staticmethod
+    def _kernel_subtitle(kernel_type: str, arch: str | None = None) -> str:
+        path = paths.core_path(kernel_type, arch)
+        if path.is_file():
+            return str(path)
+        return "Не найден — нажмите «Скачать»"
+
+    def _install_core_for_arch(
+        self, arch: str, btn: "Gtk.Button", row: "Adw.ActionRow | None" = None,
+        kernel_type: str = "xray",
+    ) -> None:
         if self._core.is_running:
             self._toast("Сначала отключитесь, затем обновите ядро")
             return
-        self.core_install_button.set_sensitive(False)
-        self.core_install_button.set_label("Загрузка…")
-
+        btn.set_sensitive(False)
+        btn.set_label("Загрузка…")
         def progress(fraction: float, message: str) -> None:
-            GLib.idle_add(self._core_progress, fraction, message)
-
+            GLib.idle_add(self._core_progress, fraction, message, arch, kernel_type)
         def worker() -> None:
             try:
-                path = install_core(progress)
+                path = install_core(progress, arch, kernel_type)
             except Exception as exc:
-                GLib.idle_add(self._core_install_done, None, str(exc))
+                GLib.idle_add(self._core_install_done, None, str(exc), arch, kernel_type)
             else:
-                GLib.idle_add(self._core_install_done, str(path), None)
-
+                GLib.idle_add(self._core_install_done, str(path), None, arch, kernel_type)
         threading.Thread(target=worker, name="core-install", daemon=True).start()
 
-    def _core_progress(self, fraction: float, message: str) -> bool:
-        if hasattr(self, "core_row"):
-            self.core_row.set_subtitle(f"{message} {int(fraction * 100)}%")
+    def _core_progress(
+        self, fraction: float, message: str, arch: str, kernel_type: str
+    ) -> bool:
+        key = f"{arch}:{kernel_type}"
+        row = self._core_tabs.get(key)
+        if row is not None:
+            row.set_subtitle(f"{message} {int(fraction * 100)}%")
         return False
 
-    def _core_install_done(self, path: str | None, error: str | None) -> bool:
-        self.core_install_button.set_sensitive(True)
-        self.core_install_button.set_label("Скачать")
+    def _core_install_done(
+        self,
+        path: str | None,
+        error: str | None,
+        arch: str | None = None,
+        kernel_type: str = "xray",
+    ) -> bool:
+        key = f"{arch}:{kernel_type}" if arch is not None else None
+        row = self._core_tabs.get(key) if key else None
+        btn = self._core_buttons.get(key) if key else None
+        if row is not None:
+            row.set_subtitle(self._core_hints.get(key, ""))
+        if btn is not None:
+            btn.set_sensitive(True)
+            installed = bool(path) or paths.core_path(kernel_type, arch).is_file()
+            btn.set_label("Обновить" if installed else "Скачать")
+        label = "Amnezia Xray" if kernel_type == "amnezia-xray" else "Xray-core"
         if path:
-            self.store.set_setting("core_path", path)
-            self.core_row.set_subtitle(self._core_subtitle())
-            self._toast("Xray-core установлен")
+            if kernel_type == "xray":
+                self.store.set_setting("core_path", path)
+            self._toast(f"{label} установлен")
         else:
-            self.core_row.set_subtitle(self._core_subtitle())
-            self._toast(f"Не удалось установить Xray: {error}")
+            self._toast(f"Не удалось установить {label}: {error}")
         return False
-
+    
     def _choose_core(self) -> None:
         dialog = Gtk.FileDialog(title="Выбрать бинарник Xray")
         dialog.open(self, None, self._core_file_chosen)
@@ -1640,10 +1743,8 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _check_core_async(self) -> None:
         xray = self.store.core_path()
-
         def worker() -> None:
             import subprocess
-
             try:
                 result = subprocess.run(
                     [str(xray), "version"], capture_output=True, text=True, timeout=15
@@ -1652,7 +1753,6 @@ class MainWindow(Adw.ApplicationWindow):
             except Exception as exc:
                 text = str(exc)
             GLib.idle_add(self._toast, f"Xray: {text.splitlines()[0]}")
-
         threading.Thread(target=worker, name="core-check", daemon=True).start()
 
     def _open_data_dir(self, *_args) -> None:
@@ -1680,7 +1780,6 @@ class MainWindow(Adw.ApplicationWindow):
         refresh.set_tooltip_text("Обновить")
         header.pack_end(refresh)
         toolbar.add_top_bar(header)
-
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_vexpand(True)
         textview = Gtk.TextView()
@@ -1696,34 +1795,102 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar.set_content(scrolled)
         dialog.set_child(toolbar)
         buffer = textview.get_buffer()
-
         def update() -> None:
             text = self._core.log_text(40000) or "Журнал пока пуст."
             buffer.set_text(text)
             end = buffer.get_end_iter()
             textview.scroll_to_iter(end, 0.0, False, 0.0, 0.0)
-
         refresh.connect("clicked", lambda *_: update())
         update()
-
         def tick() -> bool:
             update()
             return True
-
         self._log_timeout = GLib.timeout_add(1500, tick)
-
         def closed(*_args) -> None:
             if self._log_timeout is not None:
                 GLib.source_remove(self._log_timeout)
                 self._log_timeout = None
             self._log_dialog = None
-
         dialog.connect("closed", closed)
         self._log_dialog = dialog
         dialog.present(self)
 
+    # ------------------------------------------------------------------ kernels
+    def _show_kernels_dialog(self) -> None:
+        """Диалог «Ядра»: Xray и Amnezia Xray для архитектуры пользователя."""
+        machine = current_arch()
+        dialog = Adw.Dialog()
+        dialog.set_title("Ядра")
+        dialog.set_content_width(460)
+        dialog.set_follows_content_size(True)
+        dialog.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(
+            Adw.WindowTitle(title="Ядра", subtitle=f"{machine} · v{paths.VERSION}")
+        )
+        toolbar.add_top_bar(header)
+
+        page = Adw.PreferencesPage()
+        group = Adw.PreferencesGroup(
+            title="Доступные ядра",
+            description="Загрузка для вашей архитектуры. Новое ядро применится при следующем подключении.",
+        )
+        self._core_tabs.clear()
+        self._core_buttons.clear()
+        kernels = (
+            ("xray", "Xray-core", "Официальное ядро XTLS", "applications-system-symbolic"),
+            ("amnezia-xray", "Amnezia Xray", "Сборка Xray от Amnezia", "security-high-symbolic"),
+        )
+        for kernel_type, title, hint, icon_name in kernels:
+            try:
+                asset_name(kernel_type, machine)
+                supported = machine in SUPPORTED_ARCHS
+            except RuntimeError:
+                supported = False
+            key = f"{machine}:{kernel_type}"
+            subtitle = hint if supported else f"Недоступно для {machine}"
+            self._core_hints[key] = subtitle
+
+            row = Adw.ActionRow(title=title, subtitle=subtitle)
+            icon = Gtk.Image.new_from_icon_name(icon_name)
+            icon.set_pixel_size(22)
+            icon.add_css_class("kernel-icon")
+            row.add_prefix(icon)
+
+            installed = paths.core_path(kernel_type, machine).is_file()
+            btn = Gtk.Button(label="Обновить" if installed else "Скачать")
+            btn.add_css_class("suggested-action")
+            btn.add_css_class("kernel-btn")
+            btn.set_valign(Gtk.Align.CENTER)
+            btn.set_sensitive(supported)
+            action = "Обновить" if installed else "Скачать"
+            btn.set_tooltip_text(f"{action} {title} для {machine}")
+            btn.connect(
+                "clicked",
+                lambda *_, b=btn, r=row, kt=kernel_type: self._install_core_for_arch(
+                    machine, b, r, kt
+                ),
+            )
+            row.add_suffix(btn)
+            self._core_tabs[key] = row
+            self._core_buttons[key] = btn
+            group.add(row)
+
+        page.add(group)
+        toolbar.set_content(page)
+        dialog.set_child(toolbar)
+
+        def closed(*_args) -> None:
+            self._core_tabs.clear()
+            self._core_buttons.clear()
+
+        dialog.connect("closed", closed)
+        dialog.present(self)
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:
+        """Диалог «О программе» (Adw.AboutDialog): версия + 2 кнопки."""
         dialog = Adw.AboutDialog(
             application_name=paths.APP_TITLE,
             application_icon=paths.ICON_NAME,
