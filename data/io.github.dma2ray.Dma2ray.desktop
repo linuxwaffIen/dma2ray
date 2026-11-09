@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Dma2ray
+Comment=VLESS client with Xray TUN support
+Exec=dma2ray
+Icon=io.github.dma2ray.Dma2ray
+Terminal=false
+Categories=Network;
+Keywords=VLESS;Xray;VPN;Proxy;
+MimeType=x-scheme-handler/vless;
+StartupNotify=true
