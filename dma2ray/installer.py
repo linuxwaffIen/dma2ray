@@ -15,7 +15,6 @@ from pathlib import Path
 from . import paths
 
 RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
-RELEASE_BASE_AMNEZIA_XRAY = "https://github.com/amnezia-vpn/xray-core/releases/latest/download"
 RELEASE_BASE_AMNEZIA_XRAY = "https://github.com/amnezia-vpn/amnezia-xray-core/releases/latest/download"
 USER_AGENT = "dma2ray/0.2"
 HY_BASE = "https://github.com/apernet/hysteria/releases/latest/download"
@@ -151,8 +150,6 @@ def _sha256(path: Path) -> str:
 def install_core(
     progress: Progress | None = None, arch: str | None = None, kernel_type: str = "xray"
 ) -> Path:
-    asset = asset_name(kernel_type, arch)
-    paths.CORE_BIN_DIR.mkdir(parents=True, exist_ok=True)
     machine = arch or current_arch()
     asset = asset_name(kernel_type, machine)
     target_dir = paths.core_dir(kernel_type, machine)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import platform
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -107,8 +108,10 @@ dialog button.suggested-action {
 dialog button.suggested-action:hover {
     background-color: #3a7be8;
 }
+.dialog button.kernel-btn,
+button.kernel-btn,
 .kernel-btn {
-    min-width: 112px;
+    min-width: 96px;
     min-height: 34px;
     border-radius: 999px;
     font-weight: 600;
@@ -199,6 +202,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         self._core_tabs: dict[str, Adw.ActionRow] = {}
         self._core_buttons: dict[str, Gtk.Button] = {}
+        self._core_delete_buttons: dict[str, Gtk.Button] = {}
         self._core_hints: dict[str, str] = {}
         self._tray = TrayController(
             on_show=lambda: GLib.idle_add(self._present_from_tray),
@@ -1680,6 +1684,10 @@ class MainWindow(Adw.ApplicationWindow):
             return
         btn.set_sensitive(False)
         btn.set_label("Загрузка…")
+        key = f"{arch}:{kernel_type}"
+        del_btn = self._core_delete_buttons.get(key)
+        if del_btn is not None:
+            del_btn.set_sensitive(False)
         def progress(fraction: float, message: str) -> None:
             GLib.idle_add(self._core_progress, fraction, message, arch, kernel_type)
         def worker() -> None:
@@ -1690,6 +1698,56 @@ class MainWindow(Adw.ApplicationWindow):
             else:
                 GLib.idle_add(self._core_install_done, str(path), None, arch, kernel_type)
         threading.Thread(target=worker, name="core-install", daemon=True).start()
+
+    def _delete_core_for_arch(
+        self,
+        arch: str,
+        kernel_type: str,
+        title: str,
+        btn: Gtk.Button,
+        del_btn: Gtk.Button,
+        row: Adw.ActionRow,
+    ) -> None:
+        if self._core.is_running:
+            self._toast("Нельзя удалить ядро во время активного подключения")
+            return
+
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            modal=True,
+            heading=f"Удалить {title}?",
+            body=f"Файлы ядра {title} для архитектуры {arch} будут удалены с диска.",
+        )
+        dialog.add_response("cancel", "Отмена")
+        dialog.add_response("delete", "Удалить")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(_dialog: Adw.MessageDialog, response: str) -> None:
+            if response == "delete":
+                target_dir = paths.core_dir(kernel_type, arch)
+                target_bin = paths.core_path(kernel_type, arch)
+                if target_dir.is_dir():
+                    shutil.rmtree(target_dir, ignore_errors=True)
+                elif target_bin.is_file():
+                    try:
+                        target_bin.unlink()
+                    except OSError:
+                        pass
+                if self.store.settings.get("core_path") == str(target_bin):
+                    self.store.set_setting("core_path", "")
+                btn.set_label("Скачать")
+                btn.set_tooltip_text(f"Скачать {title} для {arch}")
+                del_btn.set_visible(False)
+                key = f"{arch}:{kernel_type}"
+                if key in self._core_hints:
+                    row.set_subtitle(self._core_hints[key])
+                self._toast(f"{title} удалено")
+            dialog.destroy()
+
+        dialog.connect("response", on_response)
+        dialog.present()
 
     def _core_progress(
         self, fraction: float, message: str, arch: str, kernel_type: str
@@ -1710,13 +1768,16 @@ class MainWindow(Adw.ApplicationWindow):
         key = f"{arch}:{kernel_type}" if arch is not None else None
         row = self._core_tabs.get(key) if key else None
         btn = self._core_buttons.get(key) if key else None
+        del_btn = self._core_delete_buttons.get(key) if key else None
         if row is not None:
             row.set_subtitle(self._core_hints.get(key, ""))
+        installed = bool(path) or (arch is not None and paths.core_path(kernel_type, arch).is_file())
         if btn is not None:
             btn.set_sensitive(True)
-            btn.set_label("Обновить" if path else "Скачать")
-            installed = bool(path) or paths.core_path(kernel_type, arch).is_file()
             btn.set_label("Обновить" if installed else "Скачать")
+        if del_btn is not None:
+            del_btn.set_sensitive(True)
+            del_btn.set_visible(installed)
         label = "Amnezia Xray" if kernel_type == "amnezia-xray" else "Xray-core"
         if path:
             if kernel_type == "xray":
@@ -1825,9 +1886,9 @@ class MainWindow(Adw.ApplicationWindow):
         machine = current_arch()
         dialog = Adw.Dialog()
         dialog.set_title("Ядра")
-        dialog.set_content_width(460)
-        dialog.set_follows_content_size(True)
         dialog.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
+        dialog.set_content_width(460)
+        dialog.set_content_height(420)
 
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
@@ -1843,6 +1904,7 @@ class MainWindow(Adw.ApplicationWindow):
         )
         self._core_tabs.clear()
         self._core_buttons.clear()
+        self._core_delete_buttons.clear()
         kernels = (
             ("xray", "Xray-core", "Официальное ядро XTLS", "applications-system-symbolic"),
             ("amnezia-xray", "Amnezia Xray", "Сборка Xray от Amnezia", "security-high-symbolic"),
@@ -1863,14 +1925,14 @@ class MainWindow(Adw.ApplicationWindow):
             icon.add_css_class("kernel-icon")
             row.add_prefix(icon)
 
-            btn = Gtk.Button(label="Скачать")
+            actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            actions_box.set_valign(Gtk.Align.CENTER)
             installed = paths.core_path(kernel_type, machine).is_file()
             btn = Gtk.Button(label="Обновить" if installed else "Скачать")
             btn.add_css_class("suggested-action")
             btn.add_css_class("kernel-btn")
             btn.set_valign(Gtk.Align.CENTER)
             btn.set_sensitive(supported)
-            btn.set_tooltip_text(f"Скачать {title} для {machine}")
             action = "Обновить" if installed else "Скачать"
             btn.set_tooltip_text(f"{action} {title} для {machine}")
             btn.connect(
@@ -1879,9 +1941,26 @@ class MainWindow(Adw.ApplicationWindow):
                     machine, b, r, kt
                 ),
             )
-            row.add_suffix(btn)
+            actions_box.append(btn)
+
+            del_btn = Gtk.Button.new_from_icon_name("user-trash-symbolic")
+            del_btn.add_css_class("flat")
+            del_btn.add_css_class("destructive-action")
+            del_btn.set_valign(Gtk.Align.CENTER)
+            del_btn.set_tooltip_text(f"Удалить {title}")
+            del_btn.set_visible(installed)
+            del_btn.connect(
+                "clicked",
+                lambda *_, kt=kernel_type, t=title, b=btn, db=del_btn, r=row: self._delete_core_for_arch(
+                    machine, kt, t, b, db, r
+                ),
+            )
+            actions_box.append(del_btn)
+
+            row.add_suffix(actions_box)
             self._core_tabs[key] = row
             self._core_buttons[key] = btn
+            self._core_delete_buttons[key] = del_btn
             group.add(row)
 
         page.add(group)
@@ -1891,6 +1970,7 @@ class MainWindow(Adw.ApplicationWindow):
         def closed(*_args) -> None:
             self._core_tabs.clear()
             self._core_buttons.clear()
+            self._core_delete_buttons.clear()
 
         dialog.connect("closed", closed)
         dialog.present(self)

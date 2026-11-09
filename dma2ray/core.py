@@ -508,27 +508,6 @@ class CoreManager:
         except FileNotFoundError:
             pass
 
-        args = [
-            "--socket", str(paths.PRIV_SOCKET),
-            "--xray", str(xray),
-            "--config", str(paths.CONFIG_FILE),
-            "--log", str(paths.LOG_FILE),
-            "--uid", str(os.getuid()),
-            "--gid", str(os.getgid()),
-        ]
-        if os.geteuid() == 0:
-            command = [paths.python_bin(), str(paths.PRIV_SCRIPT), *args]
-        else:
-            pkexec = shutil.which("pkexec")
-            if not pkexec:
-                raise CoreError(
-                    "Для TUN нужен pkexec (polkit). Установите polkit или запустите приложение от root."
-                )
-            if use_system:
-                command = [pkexec, str(SYSTEM_HELPER), *args]
-            else:
-                # Старый путь: сработает, но окно пароля будет общим.
-                command = [pkexec, paths.python_bin(), str(paths.PRIV_SCRIPT), *args]
         command, run_as_root = self._helper_command(xray)
         helper_log = paths.CACHE_DIR / "helper.log"
         helper_log.parent.mkdir(parents=True, exist_ok=True)
