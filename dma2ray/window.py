@@ -17,7 +17,11 @@ from .installer import (
     current_arch,
     install_core,
 )
+<<<<<<< HEAD
 from .ping import tcp_ping
+=======
+from .ping import PING_TYPE_LABELS, PING_TYPES, ping_endpoint
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
 from .speedtest import SpeedResult, speed_test
 from .state import LOG_LEVELS, MODES, Profile, Store
 from .subscriptions import FetchResult, fetch_and_parse
@@ -128,6 +132,13 @@ dialog-host > dialog,
 dialog.bottom-sheet,
 dialog.floating {
     border-radius: 0;
+<<<<<<< HEAD
+=======
+}
+.dialog button.text-button, window button.text-button {
+    min-width: 130px;
+    min-height: 36px;
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
 }
 """
 def _fmt_time(timestamp: float) -> str:
@@ -149,6 +160,18 @@ def _latency_text(ms: int | None) -> str:
 
 _LATENCY_CLASSES = ("latency-good", "latency-ok", "latency-bad", "latency-unknown")
 
+<<<<<<< HEAD
+=======
+
+def _pick_icon(theme: Gtk.IconTheme | None, *candidates: str) -> str:
+    if theme:
+        for name in candidates:
+            if theme.has_icon(name):
+                return name
+    return candidates[0] if candidates else ""
+
+
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, store: Store) -> None:
         super().__init__(
@@ -179,7 +202,13 @@ class MainWindow(Adw.ApplicationWindow):
         self._settings_reverting = False
         self._log_timeout: int | None = None
         self._log_dialog: Adw.Dialog | None = None
+<<<<<<< HEAD
         self._core = CoreManager(store, self._core_status_from_thread)
+=======
+        self._core = CoreManager(
+            store, self._core_status_from_thread, self._ask_password_dialog
+        )
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         self._core_tabs: dict[str, Adw.ActionRow] = {}
         self._core_buttons: dict[str, Gtk.Button] = {}
         self._core_hints: dict[str, str] = {}
@@ -188,11 +217,14 @@ class MainWindow(Adw.ApplicationWindow):
             on_toggle=lambda: GLib.idle_add(self._toggle_connection),
             on_quit=lambda: GLib.idle_add(self.app.quit),
         )
+<<<<<<< HEAD
+=======
+        self._install_icon()
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         self._apply_color_scheme()
         self._install_css()
         self._build_actions()
         self._build_ui()
-        self._install_icon()
         self._refresh_all()
         self._update_status(self._core.status)
         if find_core(self.store) is None:
@@ -286,14 +318,24 @@ class MainWindow(Adw.ApplicationWindow):
 
     @staticmethod
     def _install_icon() -> None:
-        if not paths.ICON_FILE.exists():
-            return
+        paths.ensure_icons()
         display = Gdk.Display.get_default()
         if not display:
             return
         try:
             theme = Gtk.IconTheme.get_for_display(display)
-            theme.add_search_path(str(paths.ICON_FILE.parent))
+            theme.add_search_path(str(paths.icons_dir()))
+            if paths.ICON_FILE.exists():
+                theme.add_search_path(str(paths.ICON_FILE.parent))
+            for root in ("/usr/share/icons/Adwaita", "/usr/local/share/icons/Adwaita"):
+                adw = Path(root)
+                if adw.is_dir():
+                    theme.add_search_path(str(adw))
+                    symbolic = adw / "symbolic"
+                    if symbolic.is_dir():
+                        for sub in symbolic.iterdir():
+                            if sub.is_dir():
+                                theme.add_search_path(str(sub))
         except Exception:
             pass
 
@@ -325,7 +367,6 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar.add_top_bar(self.header)
         self.view_stack = Adw.ViewStack()
         self.view_stack.set_vexpand(True)
-        # Плавное переключение между вкладками (по умолчанию выключено).
         self.view_stack.set_enable_transitions(True)
         self.view_stack.set_transition_duration(350)
         home = self._build_home_page()
@@ -381,7 +422,14 @@ class MainWindow(Adw.ApplicationWindow):
         self.home_detail.set_wrap(True)
         self.home_detail.set_max_width_chars(44)
         box.append(self.home_detail)
+<<<<<<< HEAD
         self.big_icon = Gtk.Image.new_from_icon_name("network-vpn-symbolic")
+=======
+        theme = self._icon_theme()
+        self.big_icon = Gtk.Image.new_from_icon_name(
+            _pick_icon(theme, "network-vpn-symbolic", "network-wired-symbolic", "security-high-symbolic")
+        )
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         self.big_icon.set_pixel_size(48)
         self.big_button = Gtk.Button()
         self.big_button.set_child(self.big_icon)
@@ -446,7 +494,10 @@ class MainWindow(Adw.ApplicationWindow):
         box.append(self.quick_group)
         self.speed_group = Adw.PreferencesGroup(title="Скорость и задержка")
         speed_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
-        self.speed_button = Gtk.Button.new_from_icon_name("network-transmit-receive-symbolic")
+        speed_icon = _pick_icon(
+            theme, "network-transmit-receive-symbolic", "network-receive-symbolic", "view-refresh-symbolic"
+        )
+        self.speed_button = Gtk.Button.new_from_icon_name(speed_icon)
         self.speed_button.add_css_class("flat")
         self.speed_button.set_tooltip_text("Измерить задержку и скорость через SOCKS5")
         self.speed_button.connect("clicked", lambda *_: self._run_speed_test())
@@ -462,6 +513,7 @@ class MainWindow(Adw.ApplicationWindow):
         return scrolled
 
     def _build_servers_page(self) -> Gtk.Widget:
+        theme = self._icon_theme()
         page = Adw.PreferencesPage()
         self.profiles_group = Adw.PreferencesGroup(title="Серверы")
         profile_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
@@ -470,9 +522,14 @@ class MainWindow(Adw.ApplicationWindow):
         self.sort_button.set_tooltip_text("Сортировать по задержке")
         self.sort_button.connect("clicked", lambda *_: self._toggle_sort())
         profile_actions.append(self.sort_button)
-        self.ping_all_button = Gtk.Button.new_from_icon_name(
-            "network-cellular-signal-excellent-symbolic"
+        ping_icon = _pick_icon(
+            theme,
+            "network-cellular-signal-excellent-symbolic",
+            "network-wireless-signal-excellent-symbolic",
+            "network-transmit-receive-symbolic",
+            "view-refresh-symbolic",
         )
+        self.ping_all_button = Gtk.Button.new_from_icon_name(ping_icon)
         self.ping_all_button.add_css_class("flat")
         self.ping_all_button.set_tooltip_text("Проверить задержку всех серверов")
         self.ping_all_button.connect("clicked", lambda *_: self._ping_all())
@@ -599,6 +656,18 @@ class MainWindow(Adw.ApplicationWindow):
             lambda row, _p: self.store.set_setting("ping_timeout", float(row.get_value())),
         )
         interface.add(timeout_row)
+        ping_type_row = Adw.ComboRow(
+            title="Тип пинга",
+            subtitle="Метод измерения задержки до серверов",
+            model=Gtk.StringList.new([PING_TYPE_LABELS[k] for k in PING_TYPES]),
+        )
+        current_pt = str(self.store.settings.get("ping_type", "tcp"))
+        ping_type_row.set_selected(PING_TYPES.index(current_pt) if current_pt in PING_TYPES else 0)
+        ping_type_row.connect(
+            "notify::selected",
+            lambda row, _p: self.store.set_setting("ping_type", PING_TYPES[row.get_selected()]),
+        )
+        interface.add(ping_type_row)
         page.add(interface)
         startup = Adw.PreferencesGroup(title="Запуск и трей")
         autostart_row = Adw.SwitchRow(
@@ -843,6 +912,48 @@ class MainWindow(Adw.ApplicationWindow):
         return self._parsed[profile.uri]
 
     # ---------------------------------------------------------------- status
+    def _ask_password_dialog(self, prompt: str) -> str | None:
+        """Запрос пароля root из рабочего потока TUN (диалог — в UI-потоке)."""
+        done = threading.Event()
+        result: dict[str, str | None] = {"password": None}
+
+        def show() -> bool:
+            clean = prompt.strip()
+            heading = "Требуется пароль root" if "root" in clean.lower() else "Требуется авторизация"
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                modal=True,
+                heading=heading,
+                body=(
+                    "Для запуска VPN в режиме TUN нужны права администратора.\n"
+                    f"{clean}"
+                ),
+            )
+            entry = Gtk.PasswordEntry()
+            entry.set_show_peek_icon(True)
+            entry.connect("activate", lambda *_: dialog.response("ok"))
+            dialog.set_extra_child(entry)
+            dialog.add_response("cancel", "Отмена")
+            dialog.add_response("ok", "Подтвердить")
+            dialog.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response("ok")
+            dialog.set_close_response("cancel")
+
+            def on_response(_dialog: Adw.MessageDialog, response: str) -> None:
+                if response == "ok":
+                    result["password"] = entry.get_text()
+                done.set()
+                dialog.destroy()
+
+            dialog.connect("response", on_response)
+            dialog.present()
+            return False
+
+        GLib.idle_add(show)
+        if not done.wait(timeout=180):
+            return None
+        return result["password"]
+
     def _core_status_from_thread(self, status: CoreStatus) -> None:
         GLib.idle_add(self._apply_core_status, status)
 
@@ -937,6 +1048,10 @@ class MainWindow(Adw.ApplicationWindow):
         label.add_css_class(_latency_class(ms))
         label.set_text(_latency_text(ms))
 
+    def _icon_theme(self) -> Gtk.IconTheme | None:
+        display = self.get_display() or Gdk.Display.get_default()
+        return Gtk.IconTheme.get_for_display(display) if display else None
+
     def _set_connect_button(
         self,
         label: str,
@@ -945,7 +1060,8 @@ class MainWindow(Adw.ApplicationWindow):
         sensitive: bool = True,
         destructive: bool = False,
     ) -> None:
-        self.big_icon.set_from_icon_name(icon)
+        chosen = _pick_icon(self._icon_theme(), icon, "network-vpn-symbolic", "security-high-symbolic")
+        self.big_icon.set_from_icon_name(chosen)
         self.big_button.set_sensitive(sensitive)
         for css in ("connect-idle", "connect-busy", "connect-active"):
             self.big_button.remove_css_class(css)
@@ -1031,7 +1147,6 @@ class MainWindow(Adw.ApplicationWindow):
         profile = self.store.get_profile(profile_id)
         if profile:
             self._toast(f"Выбран профиль: {profile.name}")
-        # При смене сервера в режиме ВПН (TUN) переподключаемся автоматически.
         status = self._core.status
         if status.state == "running" and self.store.mode == "vpn":
             self._start_selected()
@@ -1077,8 +1192,17 @@ class MainWindow(Adw.ApplicationWindow):
         if label:
             label.set_text("…")
         timeout = float(self.store.settings.get("ping_timeout", 4.0))
+        ping_type = str(self.store.settings.get("ping_type", "tcp"))
+        use_tls = getattr(parsed, "security", "") in ("tls", "reality", "xtls")
         try:
-            future = self._ping_pool.submit(tcp_ping, parsed.address, parsed.port, timeout)
+            future = self._ping_pool.submit(
+                ping_endpoint,
+                parsed.address,
+                parsed.port,
+                ping_type=ping_type,
+                timeout=timeout,
+                use_tls=use_tls,
+            )
         except RuntimeError:
             return
         self._pending_pings += 1
@@ -1558,6 +1682,16 @@ class MainWindow(Adw.ApplicationWindow):
             return "Не найден — нажмите «Скачать»"
         return str(found)
 
+<<<<<<< HEAD
+=======
+    @staticmethod
+    def _kernel_subtitle(kernel_type: str, arch: str | None = None) -> str:
+        path = paths.core_path(kernel_type, arch)
+        if path.is_file():
+            return str(path)
+        return "Не найден — нажмите «Скачать»"
+
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
     def _install_core_for_arch(
         self, arch: str, btn: "Gtk.Button", row: "Adw.ActionRow | None" = None,
         kernel_type: str = "xray",
@@ -1601,7 +1735,12 @@ class MainWindow(Adw.ApplicationWindow):
             row.set_subtitle(self._core_hints.get(key, ""))
         if btn is not None:
             btn.set_sensitive(True)
+<<<<<<< HEAD
             btn.set_label("Обновить" if path else "Скачать")
+=======
+            installed = bool(path) or paths.core_path(kernel_type, arch).is_file()
+            btn.set_label("Обновить" if installed else "Скачать")
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         label = "Amnezia Xray" if kernel_type == "amnezia-xray" else "Xray-core"
         if path:
             if kernel_type == "xray":
@@ -1726,6 +1865,11 @@ class MainWindow(Adw.ApplicationWindow):
             title="Доступные ядра",
             description="Загрузка для вашей архитектуры. Новое ядро применится при следующем подключении.",
         )
+<<<<<<< HEAD
+=======
+        self._core_tabs.clear()
+        self._core_buttons.clear()
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         kernels = (
             ("xray", "Xray-core", "Официальное ядро XTLS", "applications-system-symbolic"),
             ("amnezia-xray", "Amnezia Xray", "Сборка Xray от Amnezia", "security-high-symbolic"),
@@ -1746,12 +1890,22 @@ class MainWindow(Adw.ApplicationWindow):
             icon.add_css_class("kernel-icon")
             row.add_prefix(icon)
 
+<<<<<<< HEAD
             btn = Gtk.Button(label="Скачать")
+=======
+            installed = paths.core_path(kernel_type, machine).is_file()
+            btn = Gtk.Button(label="Обновить" if installed else "Скачать")
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
             btn.add_css_class("suggested-action")
             btn.add_css_class("kernel-btn")
             btn.set_valign(Gtk.Align.CENTER)
             btn.set_sensitive(supported)
+<<<<<<< HEAD
             btn.set_tooltip_text(f"Скачать {title} для {machine}")
+=======
+            action = "Обновить" if installed else "Скачать"
+            btn.set_tooltip_text(f"{action} {title} для {machine}")
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
             btn.connect(
                 "clicked",
                 lambda *_, b=btn, r=row, kt=kernel_type: self._install_core_for_arch(
@@ -1766,6 +1920,15 @@ class MainWindow(Adw.ApplicationWindow):
         page.add(group)
         toolbar.set_content(page)
         dialog.set_child(toolbar)
+<<<<<<< HEAD
+=======
+
+        def closed(*_args) -> None:
+            self._core_tabs.clear()
+            self._core_buttons.clear()
+
+        dialog.connect("closed", closed)
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
         dialog.present(self)
     # ------------------------------------------------------------------ about
     def _about_dialog(self) -> None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ipaddress
+import socket
+from pathlib import Path
 from typing import Any
 
 from .vless import VlessProfile
@@ -10,6 +12,21 @@ TUN_GATEWAY = "172.19.0.1/30"
 TUN_GATEWAY_V6 = "fdfe:dcba:9876::1/126"
 TUN_MTU = 1500
 DNS_TAG = "dns-in"
+
+
+def is_ipv6_supported() -> bool:
+    try:
+        flag = Path("/proc/sys/net/ipv6/conf/all/disable_ipv6")
+        if flag.is_file() and flag.read_text().strip() == "1":
+            return False
+    except OSError:
+        pass
+    try:
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+        sock.close()
+        return True
+    except OSError:
+        return False
 
 PRIVATE_NETWORKS = [
     "127.0.0.0/8",
@@ -46,6 +63,7 @@ def build_config(
     http_port: int = 10809,
     log_level: str = "warning",
     address_override: str | None = None,
+    enable_ipv6: bool | None = None,
 ) -> dict[str, Any]:
     if not 1 <= socks_port <= 65535 or not 1 <= http_port <= 65535:
         raise ValueError("Порты должны быть в диапазоне 1..65535")
@@ -54,6 +72,9 @@ def build_config(
 
     inbounds: list[dict[str, Any]] = []
     if tun:
+        has_v6 = is_ipv6_supported() if enable_ipv6 is None else enable_ipv6
+        gateways = [TUN_GATEWAY] + ([TUN_GATEWAY_V6] if has_v6 else [])
+        routes = ["0.0.0.0/0"] + (["::/0"] if has_v6 else [])
         inbounds.append(
             {
                 "tag": "tun-in",
@@ -63,11 +84,11 @@ def build_config(
                     "name": TUN_NAME,
                     "desc": "Dma2ray TUN",
                     "mtu": TUN_MTU,
-                    "gateway": [TUN_GATEWAY, TUN_GATEWAY_V6],
+                    "gateway": gateways,
                     # Xray only assigns this list to the interface on Windows;
                     # on Linux DNS is hijacked through routing below.
                     "dns": ["1.1.1.1", "8.8.8.8"],
-                    "autoSystemRoutingTable": ["0.0.0.0/0", "::/0"],
+                    "autoSystemRoutingTable": routes,
                     "autoOutboundsInterface": "auto",
                 },
             }

@@ -52,12 +52,26 @@ fi
 # Nuitka ищет patchelf и scons в PATH: сначала свой (venv), затем системный
 # (системный patchelf).
 [ -d "$VENV/bin" ] && export PATH="$VENV/bin:$PATH"
+<<<<<<< HEAD
 if ! command -v patchelf >/dev/null 2>&1; then
     echo "     ставлю patchelf через apt (нужен для standalone-режима)..."
     sudo apt-get install -y patchelf || pip install patchelf
+=======
+
+# patchelf 0.18.0 — известный багованный релиз, Nuitka отказывается с ним работать.
+patchelf_ok() {
+    command -v patchelf >/dev/null 2>&1 || return 1
+    [ "$(patchelf --version 2>/dev/null)" != "patchelf 0.18.0" ]
+}
+
+if ! patchelf_ok; then
+    echo "     ставлю свежий patchelf через pip (нужен для standalone-режима)..."
+    pip_install "patchelf>=0.19"
+>>>>>>> 594c2dac1ffabbe96e335cd93444e5ee1ad7d155
 fi
-if ! command -v patchelf >/dev/null 2>&1; then
-    echo "Ошибка: patchelf не найден (pip install patchelf)" >&2
+if ! patchelf_ok; then
+    echo "Ошибка: patchelf не найден или это багованная версия 0.18.0." >&2
+    echo "Установите patchelf != 0.18.0: pip install 'patchelf>=0.19'" >&2
     exit 1
 fi
 
