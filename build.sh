@@ -62,7 +62,6 @@ if ! patchelf_ok; then
     echo "     ставлю свежий patchelf через pip (нужен для standalone-режима)..."
     pip_install "patchelf>=0.19" || sudo apt-get install -y patchelf || true
 fi
-fi
 if ! patchelf_ok; then
     echo "Ошибка: patchelf не найден или это багованная версия 0.18.0." >&2
     echo "Установите patchelf != 0.18.0: pip install 'patchelf>=0.19'" >&2
