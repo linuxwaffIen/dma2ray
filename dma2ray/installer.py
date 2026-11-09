@@ -18,6 +18,14 @@ RELEASE_BASE = "https://github.com/XTLS/Xray-core/releases/latest/download"
 RELEASE_BASE_AMNEZIA_XRAY = "https://github.com/amnezia-vpn/xray-core/releases/latest/download"
 RELEASE_BASE_AMNEZIA_XRAY = "https://github.com/amnezia-vpn/amnezia-xray-core/releases/latest/download"
 USER_AGENT = "dma2ray/0.2"
+HY_BASE = "https://github.com/apernet/hysteria/releases/latest/download"
+HY_ASSETS = {
+    "x86_64": "hysteria-linux-amd64", "amd64": "hysteria-linux-amd64",
+    "aarch64": "hysteria-linux-arm64", "arm64": "hysteria-linux-arm64",
+    "armv7l": "hysteria-linux-arm", "i686": "hysteria-linux-386",
+    "riscv64": "hysteria-linux-riscv64",
+}
+
 
 SUPPORTED_ARCHS = frozenset(
     {
@@ -196,3 +204,22 @@ def install_core(
         progress(1.0, f"{kernel_type} установлен")
     return paths.CORE_PATH
     return target_path
+
+def install_hysteria(progress=None, arch: str | None = None) -> Path:
+    asset = HY_ASSETS.get(arch or current_arch())
+    if not asset:
+        raise RuntimeError("Нет сборки Hysteria для этой архитектуры")
+    paths.CORE_BIN_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="dma2ray-hy-", dir=str(paths.CACHE_DIR)) as tmp:
+        binary = Path(tmp) / asset
+        _download(f"{HY_BASE}/{asset}", binary, progress)
+        with urllib.request.urlopen(_request(f"{HY_BASE}/hashes.txt"), timeout=30) as r:
+            text = r.read().decode("utf-8", errors="replace")
+        m = re.search(rf"([0-9a-fA-F]{{64}})\s+\S*{re.escape(asset)}\s*$", text, re.M)
+        if not m or m.group(1).lower() != _sha256(binary):
+            raise RuntimeError("Контрольная сумма Hysteria не совпала")
+        binary.chmod(0o755)
+        staged = paths.CORE_BIN_DIR / ".hysteria.new"
+        shutil.copy2(binary, staged)
+        os.replace(staged, paths.CORE_BIN_DIR / "hysteria")
+    return paths.CORE_BIN_DIR / "hysteria"
