@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Установка системных зависимостей (GTK4, libadwaita, X11)
+      - name: Установка системных зависимостей
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -47,58 +47,3 @@ jobs:
       - name: Запуск unit-тестов
         run: |
           python3 -m unittest discover -s tests -p "test_*.py"
-
-  build:
-    name: Сборка пакетов
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - name: Checkout репозитория
-        uses: actions/checkout@v4
-
-      - name: Установка Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
-
-      - name: Установка системных зависимостей
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            dpkg-dev \
-            tar \
-            gzip \
-            xz-utils \
-            zstd \
-            bsdtar \
-            fakeroot
-
-      - name: Установка Nuitka и patchelf
-        run: |
-          pip install --upgrade pip
-          pip install nuitka patchelf
-
-      - name: Сборка бинарника (Nuitka)
-        run: |
-          chmod +x build.sh
-          ./build.sh
-
-      - name: Сборка deb / apk / arch пакетов
-        run: |
-          chmod +x scripts/build_packages.sh
-          ./scripts/build_packages.sh
-
-      - name: Проверка версии бинарника
-        run: |
-          dist/dma2ray.dist/dma2ray --version
-
-      - name: Загрузка артефактов
-        uses: actions/upload-artifact@v4
-        with:
-          name: dma2ray-packages
-          path: |
-            dma2ray_0.2.0-1_amd64.deb
-            dma2ray-0.2.0-1-x86_64.pkg.tar.zst
-            dma2ray-0.2.0-r1-x86_64.apk
-          retention-days: 7
