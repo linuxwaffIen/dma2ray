@@ -21,8 +21,7 @@ from pathlib import Path
 from . import paths
 from .config import build_config, is_ip
 from .state import Profile, Store
-from .vless import VlessError, parse_vless
-
+from .hysteria import HysteriaProfile, build_hysteria_config, parse_any
 SYSTEM_DIR = Path("/usr/libexec/dma2ray")
 SYSTEM_HELPER = SYSTEM_DIR / "dma2ray-helper"
 SYSTEM_XRAY = SYSTEM_DIR / "xray"
