@@ -1,5 +1,8 @@
 from __future__ import annotations
-
+import json
+import urllib.request
+import urllib.error
+from .state import Profile
 import base64
 import gzip
 import re
@@ -10,16 +13,6 @@ from .hysteria import parse_hysteria2
 from .vless import parse_vless
 from dataclasses import dataclass, field
 
-from .vless import (
-    VlessError,
-    parse_amnezia,
-    parse_hysteria2,
-    parse_shadowsocks,
-    parse_trojan,
-    parse_vless,
-    parse_vmess,
-    parse_wireguard,
-)
 
 MAX_SUBSCRIPTION_BYTES = 5 * 1024 * 1024
 USER_AGENT = "dma2ray/0.2"
