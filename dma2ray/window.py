@@ -7,6 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
+from pathlib import Path
+from .theme import ThemeManager
+from .widgets import RippleButton
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
@@ -44,102 +47,206 @@ SCHEME_KEYS = tuple(SCHEMES)
 SCHEME_LABELS = ("Как в системе", "Светлая", "Тёмная")
 
 CSS = b"""
+/* ============================================================
+   Material Design 3 tokens (light). Dark overrides below.
+   Requires GTK >= 4.16 for custom properties / color-mix(),
+   GTK >= 4.20 for the prefers-color-scheme media query.
+   ============================================================ */
+:root {
+    --md-primary: #2f6bd8;
+    --md-on-primary: #ffffff;
+    --md-primary-container: #d9e2ff;
+    --md-on-primary-container: #001945;
+    --md-surface: #faf8ff;
+    --md-surface-container: #efedf4;
+    --md-surface-container-high: #e9e7ef;
+    --md-on-surface: #1a1b21;
+    --md-on-surface-variant: #45464f;
+    --md-outline: #767680;
+    --md-error: #ba1a1a;
+    --md-success: #146c2e;
+    --md-warning: #7a5900;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --md-primary: #aec6ff;
+        --md-on-primary: #002e6c;
+        --md-primary-container: #00429b;
+        --md-on-primary-container: #d9e2ff;
+        --md-surface: #121318;
+        --md-surface-container: #1e1f25;
+        --md-surface-container-high: #292a2f;
+        --md-on-surface: #e3e2e9;
+        --md-on-surface-variant: #c6c6d0;
+        --md-outline: #90909a;
+        --md-error: #ffb4ab;
+        --md-success: #6dd58c;
+        --md-warning: #e8c349;
+    }
+}
+
+/* keep libadwaita accent in sync with MD primary */
 @define-color accent_bg_color #2f6bd8;
 @define-color accent_fg_color #ffffff;
 @define-color accent_color #3a7be8;
 
-switch:checked {
-    background-color: #2f6bd8;
-}
-.latency-good { color: #26a269; }
-.latency-ok { color: #e5a50a; }
-.latency-bad { color: #c01c28; }
-.latency-unknown { color: alpha(currentColor, 0.55); }
-.error-text { color: #c01c28; }
-.section-hint { color: alpha(currentColor, 0.65); }
+window { background-color: var(--md-surface); color: var(--md-on-surface); }
+
+/* ---------- typography helpers ---------- */
+.latency-good { color: var(--md-success); }
+.latency-ok { color: var(--md-warning); }
+.latency-bad { color: var(--md-error); }
+.latency-unknown { color: var(--md-on-surface-variant); }
+.error-text { color: var(--md-error); }
+.section-hint { color: var(--md-on-surface-variant); }
+.home-status { font-size: 1.4em; font-weight: 800; }
+.flag-big { font-size: 26px; }
+
+/* ---------- MD assist chip (latency pill) ---------- */
 .latency-pill {
-    background-color: alpha(currentColor, 0.14);
-    border-radius: 999px;
+    background-color: alpha(currentColor, 0.12);
+    border-radius: 8px;               /* MD chips: 8dp */
     padding: 2px 10px;
     font-size: 0.9em;
-    font-weight: bold;
+    font-weight: 600;
 }
-.flag-big { font-size: 26px; }
-.home-status { font-size: 1.4em; font-weight: 800; }
+
+/* ---------- MD FAB (connect button) ---------- */
 .connect-big {
-    min-width: 128px;
-    min-height: 128px;
-    border-radius: 64px;
+    min-width: 96px;                  /* MD large FAB = 96dp */
+    min-height: 96px;
+    border-radius: 28px;              /* MD large FAB corner = 28dp */
     padding: 0;
+    box-shadow: 0 1px 3px alpha(black, 0.30),
+                0 4px 8px alpha(black, 0.15);   /* elevation 3 */
+    transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1),
+                box-shadow 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.connect-big:hover {
+    box-shadow: 0 2px 4px alpha(black, 0.30),
+                0 6px 12px alpha(black, 0.18);  /* elevation 4 */
+}
+.connect-big:active {
+    box-shadow: 0 1px 2px alpha(black, 0.30);   /* pressed: back down */
+}
+/* tonal-FAB style state colors */
+.connect-idle {
+    background-color: var(--md-primary-container);
+    color: var(--md-on-primary-container);
+}
+.connect-idle:hover {
+    background-color: color-mix(in srgb, var(--md-primary-container), var(--md-on-primary-container) 8%);
+}
+.connect-busy {
+    background-color: var(--md-surface-container-high);
+    color: var(--md-on-surface-variant);
+}
+.connect-active {
+    background-color: var(--md-error);
     color: #ffffff;
-    transition: background-color 400ms ease, box-shadow 400ms ease;
 }
-.connect-idle { background-color: #26a269; }
-.connect-idle:hover { background-color: #2ec27e; }
-.connect-busy { background-color: #62a0ea; }
-.connect-active { background-color: #c01c28; }
-.connect-active:hover { background-color: #e01c28; }
+.connect-active:hover {
+    background-color: color-mix(in srgb, var(--md-error), black 10%);
+}
+
+/* ---------- MD filled card (server card) ---------- */
 .server-card {
-    background-color: alpha(currentColor, 0.07);
-    border-radius: 18px;
+    background-color: var(--md-surface-container);
+    color: var(--md-on-surface);
+    border-radius: 16px;              /* MD card corner = 12-16dp */
     padding: 14px 16px;
-    transition: background-color 300ms ease;
+    transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1);
 }
-.server-card:hover { background-color: alpha(currentColor, 0.12); }
-.main-headerbar,
-.main-switcherbar {
-    background-color: #14386e;
+.server-card:hover {
+    /* state layer: 8% on-surface over the container */
+    background-color: color-mix(in srgb, var(--md-surface-container), var(--md-on-surface) 8%);
+}
+.server-card:active {
+    background-color: color-mix(in srgb, var(--md-surface-container), var(--md-on-surface) 12%);
+}
+
+/* ---------- top app bar / navigation bar ---------- */
+.main-headerbar {
+    background-color: var(--md-surface-container);
+    color: var(--md-on-surface);
+    box-shadow: none;
 }
 .main-switcherbar {
-    min-height: 44px;
-    padding-top: 6px;
-    padding-bottom: 6px;
+    background-color: var(--md-surface-container);
+    min-height: 64px;
+    padding-top: 8px;
+    padding-bottom: 8px;
 }
 .main-switcherbar button {
-    min-width: 140px;
-    min-height: 40px;
-    font-size: 1.1em;
+    min-width: 120px;
+    min-height: 32px;
+    border-radius: 16px;              /* MD active indicator: pill */
+    font-size: 0.95em;
+    font-weight: 600;
+    background-color: transparent;
+    color: var(--md-on-surface-variant);
+    transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.main-switcherbar button:hover {
+    background-color: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
 }
 .main-switcherbar button:checked {
-    background-color: #2f6bd8;
+    background-color: var(--md-primary-container);
+    color: var(--md-on-primary-container);
 }
-dialog button.suggested-action {
-    background-color: #2f6bd8;
-    color: #ffffff;
+
+/* ---------- MD filled buttons ---------- */
+dialog button.suggested-action,
+button.suggested-action {
+    background-color: var(--md-primary);
+    color: var(--md-on-primary);
+    border-radius: 20px;              /* MD full-round buttons */
+    box-shadow: none;
+    transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1),
+                box-shadow 200ms cubic-bezier(0.2, 0, 0, 1);
 }
-dialog button.suggested-action:hover {
-    background-color: #3a7be8;
+dialog button.suggested-action:hover,
+button.suggested-action:hover {
+    background-color: color-mix(in srgb, var(--md-primary), var(--md-on-primary) 8%);
+    box-shadow: 0 1px 2px alpha(black, 0.30), 0 1px 3px alpha(black, 0.15);
 }
-.dialog button.kernel-btn,
-button.kernel-btn,
+button.destructive-action {
+    border-radius: 20px;
+}
+
 .kernel-btn {
     min-width: 96px;
-    min-height: 34px;
-    border-radius: 999px;
+    min-height: 40px;                 /* MD button height = 40dp */
+    border-radius: 20px;
     font-weight: 600;
 }
 .kernel-icon {
-    background-color: alpha(currentColor, 0.08);
+    background-color: var(--md-primary-container);
+    color: var(--md-on-primary-container);
     border-radius: 12px;
     padding: 10px;
 }
-window,
-window.background,
-window.csd,
-window.csd decoration {
-    border-radius: 0;
-    box-shadow: none;
+
+/* ---------- MD text fields / switches ---------- */
+entry {
+    border-radius: 8px;
 }
-dialog-host > dialog,
-dialog.bottom-sheet,
-dialog.floating {
-    border-radius: 0;
+switch:checked {
+    background-color: var(--md-primary);
 }
+
+/* ---------- dialogs: MD corner = 28dp ---------- */
+dialog { border-radius: 28px; }
+dialog.bottom-sheet { border-radius: 28px 28px 0 0; }
+
 .dialog button.text-button, window button.text-button {
-    min-width: 130px;
-    min-height: 36px;
+    min-width: 100px;
+    min-height: 40px;
+    border-radius: 20px;
 }
 """
+
 def _fmt_time(timestamp: float) -> str:
     if not timestamp:
         return "никогда"
@@ -198,7 +305,6 @@ class MainWindow(Adw.ApplicationWindow):
         self._settings_reverting = False
         self._log_timeout: int | None = None
         self._log_dialog: Adw.Dialog | None = None
-        self._core = CoreManager(store, self._core_status_from_thread)
         self._core = CoreManager(
             store, self._core_status_from_thread, self._ask_password_dialog
         )
@@ -262,6 +368,7 @@ class MainWindow(Adw.ApplicationWindow):
         if self._closing:
             return
         self._closing = True
+        self._theme.dispose()
         if self._sysproxy_applied:
             self._sysproxy_applied = False
             try:
@@ -297,15 +404,8 @@ class MainWindow(Adw.ApplicationWindow):
         return False
 
     # ------------------------------------------------------------------- ui
-    @staticmethod
-    def _install_css() -> None:
-        provider = Gtk.CssProvider()
-        provider.load_from_data(CSS)
-        display = Gdk.Display.get_default()
-        if display:
-            Gtk.StyleContext.add_provider_for_display(
-                display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-            )
+    def _install_css(self) -> None:
+        self._theme = ThemeManager()
 
     @staticmethod
     def _install_icon() -> None:
@@ -415,9 +515,8 @@ class MainWindow(Adw.ApplicationWindow):
         box.append(self.home_detail)
         self.big_icon = Gtk.Image.new_from_icon_name("network-vpn-symbolic")
         theme = self._icon_theme()
-        self.big_icon = Gtk.Image.new_from_icon_name(
-            _pick_icon(theme, "network-vpn-symbolic", "network-wired-symbolic", "security-high-symbolic")
-        )
+        self.big_button = RippleButton(corner_radius=28.0)
+        self.server_card = RippleButton(corner_radius=16.0)
         self.big_icon.set_pixel_size(48)
         self.big_button = Gtk.Button()
         self.big_button.set_child(self.big_icon)
