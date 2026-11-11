@@ -7,10 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from pathlib import Path
-from .theme import ThemeManager
-from .widgets import RippleButton
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango
+from pathlib import Path
+
+from .accent_ui import AccentMixin, themed_button
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
@@ -46,207 +46,6 @@ SCHEMES = {
 SCHEME_KEYS = tuple(SCHEMES)
 SCHEME_LABELS = ("Как в системе", "Светлая", "Тёмная")
 
-CSS = b"""
-/* ============================================================
-   Material Design 3 tokens (light). Dark overrides below.
-   Requires GTK >= 4.16 for custom properties / color-mix(),
-   GTK >= 4.20 for the prefers-color-scheme media query.
-   ============================================================ */
-:root {
-    --md-primary: #2f6bd8;
-    --md-on-primary: #ffffff;
-    --md-primary-container: #d9e2ff;
-    --md-on-primary-container: #001945;
-    --md-surface: #faf8ff;
-    --md-surface-container: #efedf4;
-    --md-surface-container-high: #e9e7ef;
-    --md-on-surface: #1a1b21;
-    --md-on-surface-variant: #45464f;
-    --md-outline: #767680;
-    --md-error: #ba1a1a;
-    --md-success: #146c2e;
-    --md-warning: #7a5900;
-}
-
-@media (prefers-color-scheme: dark) {
-    :root {
-        --md-primary: #aec6ff;
-        --md-on-primary: #002e6c;
-        --md-primary-container: #00429b;
-        --md-on-primary-container: #d9e2ff;
-        --md-surface: #121318;
-        --md-surface-container: #1e1f25;
-        --md-surface-container-high: #292a2f;
-        --md-on-surface: #e3e2e9;
-        --md-on-surface-variant: #c6c6d0;
-        --md-outline: #90909a;
-        --md-error: #ffb4ab;
-        --md-success: #6dd58c;
-        --md-warning: #e8c349;
-    }
-}
-
-/* keep libadwaita accent in sync with MD primary */
-@define-color accent_bg_color #2f6bd8;
-@define-color accent_fg_color #ffffff;
-@define-color accent_color #3a7be8;
-
-window { background-color: var(--md-surface); color: var(--md-on-surface); }
-
-/* ---------- typography helpers ---------- */
-.latency-good { color: var(--md-success); }
-.latency-ok { color: var(--md-warning); }
-.latency-bad { color: var(--md-error); }
-.latency-unknown { color: var(--md-on-surface-variant); }
-.error-text { color: var(--md-error); }
-.section-hint { color: var(--md-on-surface-variant); }
-.home-status { font-size: 1.4em; font-weight: 800; }
-.flag-big { font-size: 26px; }
-
-/* ---------- MD assist chip (latency pill) ---------- */
-.latency-pill {
-    background-color: alpha(currentColor, 0.12);
-    border-radius: 8px;               /* MD chips: 8dp */
-    padding: 2px 10px;
-    font-size: 0.9em;
-    font-weight: 600;
-}
-
-/* ---------- MD FAB (connect button) ---------- */
-.connect-big {
-    min-width: 96px;                  /* MD large FAB = 96dp */
-    min-height: 96px;
-    border-radius: 28px;              /* MD large FAB corner = 28dp */
-    padding: 0;
-    box-shadow: 0 1px 3px alpha(black, 0.30),
-                0 4px 8px alpha(black, 0.15);   /* elevation 3 */
-    transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1),
-                box-shadow 200ms cubic-bezier(0.2, 0, 0, 1);
-}
-.connect-big:hover {
-    box-shadow: 0 2px 4px alpha(black, 0.30),
-                0 6px 12px alpha(black, 0.18);  /* elevation 4 */
-}
-.connect-big:active {
-    box-shadow: 0 1px 2px alpha(black, 0.30);   /* pressed: back down */
-}
-/* tonal-FAB style state colors */
-.connect-idle {
-    background-color: var(--md-primary-container);
-    color: var(--md-on-primary-container);
-}
-.connect-idle:hover {
-    background-color: color-mix(in srgb, var(--md-primary-container), var(--md-on-primary-container) 8%);
-}
-.connect-busy {
-    background-color: var(--md-surface-container-high);
-    color: var(--md-on-surface-variant);
-}
-.connect-active {
-    background-color: var(--md-error);
-    color: #ffffff;
-}
-.connect-active:hover {
-    background-color: color-mix(in srgb, var(--md-error), black 10%);
-}
-
-/* ---------- MD filled card (server card) ---------- */
-.server-card {
-    background-color: var(--md-surface-container);
-    color: var(--md-on-surface);
-    border-radius: 16px;              /* MD card corner = 12-16dp */
-    padding: 14px 16px;
-    transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1);
-}
-.server-card:hover {
-    /* state layer: 8% on-surface over the container */
-    background-color: color-mix(in srgb, var(--md-surface-container), var(--md-on-surface) 8%);
-}
-.server-card:active {
-    background-color: color-mix(in srgb, var(--md-surface-container), var(--md-on-surface) 12%);
-}
-
-/* ---------- top app bar / navigation bar ---------- */
-.main-headerbar {
-    background-color: var(--md-surface-container);
-    color: var(--md-on-surface);
-    box-shadow: none;
-}
-.main-switcherbar {
-    background-color: var(--md-surface-container);
-    min-height: 64px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-}
-.main-switcherbar button {
-    min-width: 120px;
-    min-height: 32px;
-    border-radius: 16px;              /* MD active indicator: pill */
-    font-size: 0.95em;
-    font-weight: 600;
-    background-color: transparent;
-    color: var(--md-on-surface-variant);
-    transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1);
-}
-.main-switcherbar button:hover {
-    background-color: color-mix(in srgb, var(--md-on-surface) 8%, transparent);
-}
-.main-switcherbar button:checked {
-    background-color: var(--md-primary-container);
-    color: var(--md-on-primary-container);
-}
-
-/* ---------- MD filled buttons ---------- */
-dialog button.suggested-action,
-button.suggested-action {
-    background-color: var(--md-primary);
-    color: var(--md-on-primary);
-    border-radius: 20px;              /* MD full-round buttons */
-    box-shadow: none;
-    transition: background-color 200ms cubic-bezier(0.2, 0, 0, 1),
-                box-shadow 200ms cubic-bezier(0.2, 0, 0, 1);
-}
-dialog button.suggested-action:hover,
-button.suggested-action:hover {
-    background-color: color-mix(in srgb, var(--md-primary), var(--md-on-primary) 8%);
-    box-shadow: 0 1px 2px alpha(black, 0.30), 0 1px 3px alpha(black, 0.15);
-}
-button.destructive-action {
-    border-radius: 20px;
-}
-
-.kernel-btn {
-    min-width: 96px;
-    min-height: 40px;                 /* MD button height = 40dp */
-    border-radius: 20px;
-    font-weight: 600;
-}
-.kernel-icon {
-    background-color: var(--md-primary-container);
-    color: var(--md-on-primary-container);
-    border-radius: 12px;
-    padding: 10px;
-}
-
-/* ---------- MD text fields / switches ---------- */
-entry {
-    border-radius: 8px;
-}
-switch:checked {
-    background-color: var(--md-primary);
-}
-
-/* ---------- dialogs: MD corner = 28dp ---------- */
-dialog { border-radius: 28px; }
-dialog.bottom-sheet { border-radius: 28px 28px 0 0; }
-
-.dialog button.text-button, window button.text-button {
-    min-width: 100px;
-    min-height: 40px;
-    border-radius: 20px;
-}
-"""
-
 def _fmt_time(timestamp: float) -> str:
     if not timestamp:
         return "никогда"
@@ -275,7 +74,7 @@ def _pick_icon(theme: Gtk.IconTheme | None, *candidates: str) -> str:
     return candidates[0] if candidates else ""
 
 
-class MainWindow(Adw.ApplicationWindow):
+class MainWindow(AccentMixin, Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, store: Store) -> None:
         super().__init__(
             application=app,
@@ -322,13 +121,16 @@ class MainWindow(Adw.ApplicationWindow):
         self._install_css()
         self._build_actions()
         self._build_ui()
+        self._refresh_accent_selection()
+        if str(self.store.settings.get("accent_mode", "preset")) == "wallpaper":
+            self._refresh_wallpaper_accent(silent=True)
         self._refresh_all()
         self._update_status(self._core.status)
         if find_core(self.store) is None:
             self._toast("Xray-core не найден — скачайте его в «Настройки → Ядро»")
         self.connect("close-request", self._on_close_request)
-        if self.store.settings.get("tray_enabled", True):
-            self._try_start_tray(silent=True)
+        self._try_start_tray(silent=True)
+
     def _apply_color_scheme(self) -> None:
         key = str(self.store.settings.get("color_scheme", "system"))
         Adw.StyleManager.get_default().set_color_scheme(
@@ -368,7 +170,10 @@ class MainWindow(Adw.ApplicationWindow):
         if self._closing:
             return
         self._closing = True
-        self._theme.dispose()
+        theme = getattr(self, "_theme", None)
+        if theme is not None:
+            theme.dispose()
+            self._theme.dispose()
         if self._sysproxy_applied:
             self._sysproxy_applied = False
             try:
@@ -404,9 +209,6 @@ class MainWindow(Adw.ApplicationWindow):
         return False
 
     # ------------------------------------------------------------------- ui
-    def _install_css(self) -> None:
-        self._theme = ThemeManager()
-
     @staticmethod
     def _install_icon() -> None:
         paths.ensure_icons()
@@ -513,12 +315,13 @@ class MainWindow(Adw.ApplicationWindow):
         self.home_detail.set_wrap(True)
         self.home_detail.set_max_width_chars(44)
         box.append(self.home_detail)
-        self.big_icon = Gtk.Image.new_from_icon_name("network-vpn-symbolic")
         theme = self._icon_theme()
-        self.big_button = RippleButton(corner_radius=28.0)
-        self.server_card = RippleButton(corner_radius=16.0)
+        self.big_icon = Gtk.Image.new_from_icon_name(
+            _pick_icon(theme, "network-vpn-symbolic", "network-wired-symbolic", "security-high-symbolic")
+        )
+        self.big_button = themed_button(28.0)
+        self.server_card = themed_button(16.0)
         self.big_icon.set_pixel_size(48)
-        self.big_button = Gtk.Button()
         self.big_button.set_child(self.big_icon)
         self.big_button.add_css_class("connect-big")
         self.big_button.add_css_class("connect-idle")
@@ -526,7 +329,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.big_button.set_tooltip_text("Подключить или отключить")
         self.big_button.connect("clicked", lambda *_: self._toggle_connection())
         box.append(self.big_button)
-        self.server_card = Gtk.Button()
         self.server_card.add_css_class("flat")
         self.server_card.add_css_class("server-card")
         self.server_card.set_halign(Gtk.Align.FILL)
@@ -705,6 +507,8 @@ class MainWindow(Adw.ApplicationWindow):
         )
         scheme_row.connect("notify::selected", self._settings_scheme)
         appearance.add(scheme_row)
+        appearance.add(self._build_accent_row())
+
         page.add(appearance)
         interface = Adw.PreferencesGroup(title="Серверы и задержки")
         auto_ping_row = Adw.SwitchRow(

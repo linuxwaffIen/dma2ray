@@ -1,9 +1,7 @@
 """Material 3 theme for Dma2ray.
 
 Один активный GtkCssProvider на APPLICATION-приоритете: light / dark / high-contrast.
-Переключается по Adw.StyleManager, поэтому палитра и foreground всегда из одной
-схемы. Используются только фичи GTK 4.0: named colors, alpha()/mix(), градиенты,
-box-shadow, transition, @keyframes. Никаких var(), color-mix() и @media.
+Палитры генерируются из seed-цвета, поэтому акцент меняется на лету.
 """
 
 from __future__ import annotations
@@ -14,88 +12,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gtk
 
-
-# --------------------------------------------------------------- palettes
-
-LIGHT = {
-    "primary": "#2B5CE6",
-    "on_primary": "#FFFFFF",
-    "primary_container": "#DCE4FF",
-    "on_primary_container": "#00174B",
-    "secondary": "#00696E",
-    "on_secondary": "#FFFFFF",
-    "secondary_container": "#9FF1F5",
-    "on_secondary_container": "#002022",
-    "tertiary": "#7A4FD0",
-    "tertiary_container": "#EBDDFF",
-    "on_tertiary_container": "#26005B",
-    "error": "#BA1A1A",
-    "on_error": "#FFFFFF",
-    "error_container": "#FFDAD6",
-    "on_error_container": "#410002",
-    "success": "#146C2E",
-    "on_success": "#FFFFFF",
-    "success_container": "#A6F2B8",
-    "on_success_container": "#00210C",
-    "warning": "#7A5900",
-    "on_warning": "#FFFFFF",
-    "warning_container": "#FFDF9E",
-    "on_warning_container": "#261A00",
-    "surface": "#FAF8FF",
-    "surface_container_lowest": "#FFFFFF",
-    "surface_container_low": "#F4F3FA",
-    "surface_container": "#EEEDF4",
-    "surface_container_high": "#E8E7EF",
-    "surface_container_highest": "#E2E2E9",
-    "on_surface": "#1A1B21",
-    "on_surface_variant": "#45464F",
-    "outline": "#767680",
-    "outline_variant": "#C6C6D0",
-    "inverse_surface": "#2F3036",
-    "inverse_on_surface": "#F1F0F7",
-    "card_bg": "#FFFFFF",
-    "shadow": "#000000",
-}
-
-DARK = {
-    "primary": "#B4C5FF",
-    "on_primary": "#002B75",
-    "primary_container": "#003FA8",
-    "on_primary_container": "#DCE4FF",
-    "secondary": "#4DD9E0",
-    "on_secondary": "#003739",
-    "secondary_container": "#004F52",
-    "on_secondary_container": "#9FF1F5",
-    "tertiary": "#D6BAFF",
-    "tertiary_container": "#5C2FB0",
-    "on_tertiary_container": "#EBDDFF",
-    "error": "#FFB4AB",
-    "on_error": "#690005",
-    "error_container": "#93000A",
-    "on_error_container": "#FFDAD6",
-    "success": "#6DD58C",
-    "on_success": "#003919",
-    "success_container": "#00522C",
-    "on_success_container": "#A6F2B8",
-    "warning": "#F2C14E",
-    "on_warning": "#402D00",
-    "warning_container": "#5C4300",
-    "on_warning_container": "#FFDF9E",
-    "surface": "#111318",
-    "surface_container_lowest": "#0B0E13",
-    "surface_container_low": "#191C20",
-    "surface_container": "#1D2024",
-    "surface_container_high": "#282A2F",
-    "surface_container_highest": "#33353A",
-    "on_surface": "#E2E2E9",
-    "on_surface_variant": "#C6C6D0",
-    "outline": "#90909A",
-    "outline_variant": "#45464F",
-    "inverse_surface": "#E2E2E9",
-    "inverse_on_surface": "#2F3036",
-    "card_bg": "#191C20",
-    "shadow": "#000000",
-}
+from .accent import DEFAULT_ACCENT, normalize_hex
+from .colorscience import schemes_from_seed
 
 
 def _rgb(value: str) -> tuple[int, int, int]:
@@ -103,7 +21,7 @@ def _rgb(value: str) -> tuple[int, int, int]:
     return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
 
 
-def _hex(rgb: tuple[float, float, float]) -> str:
+def _hex(rgb) -> str:
     return "#%02x%02x%02x" % tuple(max(0, min(255, round(c))) for c in rgb)
 
 
@@ -177,7 +95,6 @@ def _named_colors(p: dict[str, str]) -> dict[str, str]:
         "shade_color": _rgba(shade, 0.12),
         "scrollbar_outline_color": _rgba(p["surface"], 0.60),
         "borders": _rgba(on, 0.14),
-        # --- Material roles used by the component layer ---
         "md_primary_container": p["primary_container"],
         "md_on_primary_container": p["on_primary_container"],
         "md_secondary_container": p["secondary_container"],
@@ -215,31 +132,19 @@ def _named_colors(p: dict[str, str]) -> dict[str, str]:
         for i, value in enumerate(_ramp(base), start=1):
             d[f"{name}_{i}"] = value
     for i, key in enumerate(
-        (
-            "surface_container_lowest",
-            "surface_container_low",
-            "surface_container_high",
-            "outline_variant",
-            "outline",
-        ),
+        ("surface_container_lowest", "surface_container_low",
+         "surface_container_high", "outline_variant", "outline"),
         start=1,
     ):
         d[f"light_{i}"] = p[key]
     for i, value in enumerate(
-        (
-            p["outline"],
-            variant,
-            _mix(on, shade, 0.30),
-            p["surface_container_low"],
-            p["surface_container_lowest"],
-        ),
+        (p["outline"], variant, _mix(on, shade, 0.30),
+         p["surface_container_low"], p["surface_container_lowest"]),
         start=1,
     ):
         d[f"dark_{i}"] = value
     return d
 
-
-# ------------------------------------------------- shape / size / motion
 
 STRUCTURAL_CSS = """
 .main-headerbar { padding: 4px 6px; }
@@ -350,10 +255,33 @@ scrollbar > range > trough > slider {
 }
 scrollbar > range > trough > slider:hover { background-color: alpha(currentColor, 0.44); }
 scrollbar > range > trough > slider:active { background-color: alpha(currentColor, 0.62); }
+
+.accent-swatch {
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    transition: box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+.accent-flow > flowboxchild {
+    padding: 4px;
+    border-radius: 999px;
+    background-color: transparent;
+}
+.accent-actions button {
+    min-height: 34px;
+    padding: 4px 14px;
+    border-radius: 17px;
+    font-weight: 600;
+}
+.accent-hex {
+    font-family: monospace;
+    font-size: 0.9em;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
 """
-
-
-# ------------------------------------------------------- colour layer
 
 COLOR_CSS = """
 .main-headerbar {
@@ -530,6 +458,28 @@ toast {
     box-shadow: 0 4px 14px alpha(@md_shadow, 0.30);
 }
 toast label, toast button { color: @md_inverse_on_surface; }
+
+.accent-swatch {
+    box-shadow: 0 0 0 1px alpha(@md_on_surface, 0.16),
+                0 1px 2px alpha(@md_shadow, 0.22);
+}
+.accent-swatch:hover {
+    box-shadow: 0 0 0 2px alpha(@md_on_surface, 0.30),
+                0 2px 6px alpha(@md_shadow, 0.28);
+}
+.accent-swatch.accent-selected {
+    box-shadow: 0 0 0 2px @card_bg_color,
+                0 0 0 4px @accent_color;
+}
+.accent-actions button.accent-mode-active {
+    background-image: none;
+    background-color: @md_primary_container;
+    color: @md_on_primary_container;
+}
+.accent-hex {
+    background-color: @md_surface_container_highest;
+    color: @md_on_surface_variant;
+}
 """
 
 
@@ -547,21 +497,46 @@ def _build(palette: dict[str, str] | None) -> bytes:
     return "\n".join(parts).encode("utf-8")
 
 
+def _build_from_seed(seed: str) -> tuple[bytes, bytes]:
+    light, dark = schemes_from_seed(seed)
+    return _build(light), _build(dark)
+
+
 class ThemeManager:
     """Держит ровно один активный провайдер и синхронизирует его с Adw."""
 
-    def __init__(self) -> None:
+    def __init__(self, seed: str = DEFAULT_ACCENT) -> None:
         self._display = Gdk.Display.get_default()
+        self._seed = normalize_hex(seed)
         self._light = Gtk.CssProvider()
-        self._light.load_from_data(_build(LIGHT))
         self._dark = Gtk.CssProvider()
-        self._dark.load_from_data(_build(DARK))
         self._hc = Gtk.CssProvider()
         self._hc.load_from_data(_build(None))
         self._active: Gtk.CssProvider | None = None
         self._manager = Adw.StyleManager.get_default()
         self._manager.connect("notify::dark", self._sync)
         self._manager.connect("notify::high-contrast", self._sync)
+        self._load_seed(self._seed)
+        self._sync()
+
+    @property
+    def seed(self) -> str:
+        return self._seed
+
+    def _load_seed(self, seed: str) -> None:
+        light, dark = _build_from_seed(seed)
+        self._light.load_from_data(light)
+        self._dark.load_from_data(dark)
+
+    def set_seed(self, seed: str) -> None:
+        seed = normalize_hex(seed)
+        if seed == self._seed:
+            return
+        self._seed = seed
+        if self._active is not None and self._display is not None:
+            Gtk.StyleContext.remove_provider_for_display(self._display, self._active)
+        self._load_seed(seed)
+        self._active = None
         self._sync()
 
     def _sync(self, *_args) -> None:
