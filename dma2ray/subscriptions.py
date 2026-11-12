@@ -10,14 +10,31 @@ import urllib.error
 import urllib.request
 
 from .hysteria import parse_hysteria2
-from .vless import parse_vless
+from .vless import (
+    parse_trojan,
+    parse_shadowsocks,
+    parse_vmess,
+    parse_wireguard,
+    parse_amnezia,
+    parse_vless,
+)
 from dataclasses import dataclass, field
 
 
 MAX_SUBSCRIPTION_BYTES = 5 * 1024 * 1024
 USER_AGENT = "dma2ray/0.2"
-SUPPORTED_PREFIXES = ("vless://", "hysteria2://", "hy2://")
-KNOWN_PREFIXES = ("tuic://", "trojan://", "ss://", "vmess://", "wireguard://", "amnezia://")
+SUPPORTED_PREFIXES = (
+    "vless://",
+    "trojan://",
+    "ss://",
+    "vmess://",
+    "hysteria2://",
+    "hy2://",
+    "wireguard://",
+    "amnezia://",
+)
+# Префиксы, которые мы знаем, но не можем распарсить (пока без парсера)
+KNOWN_PREFIXES = ("tuic://",)
 
 @dataclass
 class FetchResult:
@@ -71,8 +88,23 @@ def parse_subscription(text: str) -> FetchResult:
             if line in seen:
                 continue
             seen.add(line)
-            parser = parse_vless if lowered.startswith("vless://") else parse_hysteria2
-            profile = _safe_parse(parser, line)
+            if lowered.startswith("vless://"):
+                parser = parse_vless
+            elif lowered.startswith("trojan://"):
+                parser = parse_trojan
+            elif lowered.startswith("ss://"):
+                parser = parse_shadowsocks
+            elif lowered.startswith("vmess://"):
+                parser = parse_vmess
+            elif lowered.startswith(("hysteria2://", "hy2://")):
+                parser = parse_hysteria2
+            elif lowered.startswith("wireguard://"):
+                parser = parse_wireguard
+            elif lowered.startswith("amnezia://"):
+                parser = parse_amnezia
+            else:
+                parser = None
+            profile = _safe_parse(parser, line) if parser else None
             if profile is not None:
                 result.entries.append((profile.name, line))
             else:

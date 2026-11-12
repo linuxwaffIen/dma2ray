@@ -180,9 +180,27 @@ def format_hysteria_config(cfg: dict) -> str:
 
 
 def parse_any(uri: str):
-    """Единая точка входа: hysteria2:// или всё остальное (vless и т.д.)."""
-    from .vless import parse_vless
+    """Единая точка входа для всех поддерживаемых ссылок."""
+    from .vless import (
+        parse_trojan,
+        parse_shadowsocks,
+        parse_vmess,
+        parse_wireguard,
+        parse_amnezia,
+        parse_vless,
+    )
 
-    if uri.strip().lower().startswith(("hysteria2://", "hy2://")):
+    lowered = uri.strip().lower()
+    if lowered.startswith(("hysteria2://", "hy2://")):
         return parse_hysteria2(uri)
+    if lowered.startswith("trojan://"):
+        return parse_trojan(uri)
+    if lowered.startswith("ss://"):
+        return parse_shadowsocks(uri)
+    if lowered.startswith("vmess://"):
+        return parse_vmess(uri)
+    if lowered.startswith("wireguard://"):
+        return parse_wireguard(uri)
+    if lowered.startswith("amnezia://"):
+        return parse_amnezia(uri)
     return parse_vless(uri)
