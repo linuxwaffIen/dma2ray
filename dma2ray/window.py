@@ -79,13 +79,49 @@ def _pick_icon(theme: Gtk.IconTheme | None, *candidates: str) -> str:
     return candidates[0] if candidates else ""
 
 
+def _active_monitor() -> Gdk.Monitor | None:
+    """Монитор под курсором, иначе первый доступный."""
+    display = Gdk.Display.get_default()
+    if display is None:
+        return None
+    monitor: Gdk.Monitor | None = None
+    seat = display.get_default_seat()
+    pointer = seat.get_pointer() if seat else None
+    if pointer:
+        surface, _x, _y = pointer.get_position()
+        if surface:
+            monitor = display.get_monitor_at_surface(surface)
+    if monitor is None and display.get_n_monitors() > 0:
+        monitor = display.get_monitor(0)
+    return monitor
+
+
+def _fit_to_monitor(width: int, height: int) -> tuple[int, int]:
+    """Ограничивает запрошенный размер активным монитором."""
+    monitor = _active_monitor()
+    if monitor is None:
+        return width, height
+    geom = monitor.get_geometry()
+    if geom.width <= 0 or geom.height <= 0:
+        return width, height
+    return min(width, geom.width), min(height, geom.height)
+
+
+def _apply_dialog_size(dialog: Adw.Dialog, width: int, height: int) -> None:
+    """Задаёт размер диалога, не превышающий размер экрана."""
+    width, height = _fit_to_monitor(width, height)
+    dialog.set_content_width(width)
+    dialog.set_content_height(height)
+
+
 class MainWindow(AccentMixin, Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, store: Store) -> None:
+        default_width, default_height = _fit_to_monitor(440, 800)
         super().__init__(
             application=app,
             title=paths.APP_TITLE,
-            default_width=440,
-            default_height=800,
+            default_width=default_width,
+            default_height=default_height,
         )
         self.app = app
         self.store = store
@@ -691,8 +727,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
 
         dialog = Adw.Dialog()
         dialog.set_title("QR-код профиля")
-        dialog.set_content_width(400)
-        dialog.set_content_height(460)
+        _apply_dialog_size(dialog, 400, 460)
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         header.set_title_widget(
@@ -1310,7 +1345,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
     def _add_subscription_dialog(self) -> None:
         dialog = Adw.Dialog()
         dialog.set_title("Новая подписка")
-        dialog.set_content_width(480)
+        dialog.set_content_width(_fit_to_monitor(480, 0)[0])
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         header.set_title_widget(
@@ -1454,7 +1489,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
     def _add_profile_dialog(self) -> None:
         dialog = Adw.Dialog()
         dialog.set_title("Новый профиль")
-        dialog.set_content_width(480)
+        dialog.set_content_width(_fit_to_monitor(480, 0)[0])
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         header.set_title_widget(
@@ -1895,8 +1930,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             return
         dialog = Adw.Dialog()
         dialog.set_title("Журнал Xray")
-        dialog.set_content_width(760)
-        dialog.set_content_height(560)
+        _apply_dialog_size(dialog, 760, 560)
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         header.set_title_widget(
@@ -1952,8 +1986,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         dialog = Adw.Dialog()
         dialog.set_title("Ядра")
         dialog.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
-        dialog.set_content_width(460)
-        dialog.set_content_height(420)
+        _apply_dialog_size(dialog, 460, 420)
 
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
