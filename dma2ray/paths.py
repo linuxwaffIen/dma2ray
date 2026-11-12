@@ -11,7 +11,7 @@ from .icons import APP_ICON_SVG, ICONS, TRAY_ICONS
 APP_ID = "io.github.dma2ray.Dma2ray"
 APP_NAME = "dma2ray"
 APP_TITLE = "Dma2ray"
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

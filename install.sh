@@ -174,23 +174,34 @@ install_app() {
     echo "Ядро Xray можно скачать в «Настройках → Ядро → Скачать»"
 }
 
-[ "$(id -u)" = 0 ] || exec sudo "$0" "$@"
-XRAY=${1:?укажите путь к xray}
-PRIV=${2:?укажите путь к priv-скрипту}
-DIR=/usr/libexec/dma2ray
-PY=$(command -v python3)
+install_system_helper() {
+    # Устанавливает привилегированный хелпер для TUN-режима и polkit-политику.
+    # Требует root; вызывается только при установке (не при удалении).
+    if [[ $EUID -ne 0 ]]; then
+        echo "Для установки system-хелпера нужен root: sudo ./install.sh --system" >&2
+        return 1
+    fi
 
-install -d -m 755 "$DIR"
-install -m 755 "$XRAY" "$DIR/xray"
-install -m 644 "$PRIV" "$DIR/priv.py"
+    local bin_src="$ROOT/dist/dma2ray.dist/dma2ray"
+    local priv_src="$ROOT/dma2ray/privileged.py"
+    [[ -x "$bin_src" ]] || { echo "Бинарник не собран: $bin_src" >&2; return 1; }
+    [[ -f "$priv_src" ]] || { echo "Не найден priv-скрипт: $priv_src" >&2; return 1; }
 
-cat > "$DIR/dma2ray-helper" <<EOF
+    local DIR=/usr/libexec/dma2ray
+    local PY
+    PY=$(command -v python3)
+
+    install -d -m 755 "$DIR"
+    install -m 755 "$bin_src" "$DIR/dma2ray"
+    install -m 755 "$priv_src" "$DIR/priv.py"
+
+    cat > "$DIR/dma2ray-helper" <<EOF
 #!/bin/sh
 exec $PY $DIR/priv.py "\$@"
 EOF
-chmod 755 "$DIR/dma2ray-helper"
+    chmod 755 "$DIR/dma2ray-helper"
 
-cat > /usr/share/polkit-1/actions/org.dma2ray.run-core.policy <<'EOF'
+    cat > /usr/share/polkit-1/actions/org.dma2ray.run-core.policy <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE policyconfig PUBLIC
  "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
@@ -210,9 +221,12 @@ cat > /usr/share/polkit-1/actions/org.dma2ray.run-core.policy <<'EOF'
   </action>
 </policyconfig>
 EOF
-echo "Готово"
+    echo "Готово"
+}
+
 if [[ "$ACTION" == "uninstall" ]]; then
     uninstall
 else
     install_app
+    install_system_helper
 fi

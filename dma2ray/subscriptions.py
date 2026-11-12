@@ -78,11 +78,10 @@ def parse_subscription(text: str) -> FetchResult:
             else:
                 result.invalid += 1
                 result.errors.append("Не удалось распарсить ссылку")
-                result.invalid += 1
-                result.errors.append(str(parse_error))
         elif lowered.startswith(KNOWN_PREFIXES):
             result.raw_count += 1
-            result.unsupported += 1
+            result.invalid += 1
+            result.errors.append("Протокол не поддерживается")
     return result
 
 

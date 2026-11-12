@@ -199,7 +199,6 @@ def install_core(
 
     if progress:
         progress(1.0, f"{kernel_type} установлен")
-    return paths.CORE_PATH
     return target_path
 
 def install_hysteria(progress=None, arch: str | None = None) -> Path:

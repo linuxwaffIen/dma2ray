@@ -324,11 +324,48 @@ class CoreManager:
                     if isinstance(parsed, HysteriaProfile):
                         binary = find_hysteria()
                         if binary is None:
-                           raise CoreError("Hysteria не найдена. Скачайте её в меню «Ядра».")
+                            raise CoreError("Hysteria не найдена. Скачайте её в меню «Ядра».")
                         address = self._resolve(parsed.address, parsed.port)
-                        cfg = build_hysteria_config(parsed, tun=tun, socks_port=..., http_port=..., address_override=address)
-                        self._write_config(cfg, paths.HY_CONFIG_FILE)   # сделайте путь параметром
-                        argv = [str(binary), "client", "-c", str(paths.HY_CONFIG_FILE)]
+                        settings = dict(self.store.settings)
+                        cfg = build_hysteria_config(
+                            parsed,
+                            tun=tun,
+                            socks_port=int(settings["socks_port"]),
+                            http_port=int(settings["http_port"]),
+                            address_override=address,
+                        )
+                        self._write_config(cfg, paths.HY_CONFIG_FILE)
+                        paths.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                        log_handle = paths.LOG_FILE.open("wb", buffering=0)
+                        try:
+                            proc = subprocess.Popen(
+                                [str(binary), "client", "-c", str(paths.HY_CONFIG_FILE)],
+                                stdin=subprocess.DEVNULL,
+                                stdout=log_handle,
+                                stderr=subprocess.STDOUT,
+                                start_new_session=True,
+                            )
+                        except OSError as exc:
+                            log_handle.close()
+                            raise CoreError(f"Не удалось запустить Hysteria: {exc}") from exc
+                        finally:
+                            try:
+                                log_handle.close()
+                            except Exception:
+                                pass
+                        time.sleep(0.9)
+                        code = proc.poll()
+                        if code is not None:
+                            raise CoreError(
+                                f"Hysteria завершился с кодом {code}\n{_tail(paths.LOG_FILE)}".strip()
+                            )
+                        self._direct_proc = proc
+                        thread = threading.Thread(
+                            target=self._monitor_direct, args=(proc,),
+                            name="hysteria-monitor", daemon=True,
+                        )
+                        thread.start()
+                        self._emit(CoreStatus("running", profile.id, tun, "Подключено"))
                     else:
                         self._emit(
                             CoreStatus("starting", profile.id, tun, "Определение адреса сервера…")
@@ -802,9 +839,10 @@ class CoreManager:
         return chosen[4][0]
 
     @staticmethod
-    def _write_config(config: dict) -> None:
-        paths.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = paths.CONFIG_FILE.with_suffix(".tmp")
+    def _write_config(config: dict, path: Path | None = None) -> None:
+        target = path or paths.CONFIG_FILE
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -812,7 +850,7 @@ class CoreManager:
                 handle.write("\n")
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(tmp, paths.CONFIG_FILE)
+            os.replace(tmp, target)
         finally:
             try:
                 tmp.unlink()
