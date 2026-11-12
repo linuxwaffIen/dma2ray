@@ -109,6 +109,46 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual(proxy["settings"]["server"], "example.com")
         self.assertEqual(proxy["settings"]["server_port"], 443)
 
+    def test_shadowsocks_2022_plain_userinfo(self) -> None:
+        profile = parse_shadowsocks(
+            "ss://2022-blake3-aes-256-gcm%3AaGVsbG8lMjB3b3JsZA%3D%3D"
+            "@example.com:8388#SS2022"
+        )
+        self.assertEqual(profile.security, "2022-blake3-aes-256-gcm")
+        self.assertEqual(profile.uuid, "aGVsbG8lMjB3b3JsZA==")
+        self.assertEqual(profile.name, "SS2022")
+
+    def test_shadowsocks_sip002_base64_userinfo(self) -> None:
+        import base64
+
+        userinfo = base64.urlsafe_b64encode(
+            b"chacha20-ietf-poly1305:secret:pass"
+        ).decode().rstrip("=")
+        profile = parse_shadowsocks(f"ss://{userinfo}@example.com:443#node")
+        self.assertEqual(profile.security, "chacha20-ietf-poly1305")
+        self.assertEqual(profile.uuid, "secret:pass")
+        self.assertEqual(profile.name, "node")
+
+    def test_shadowsocks_legacy_base64_uri(self) -> None:
+        import base64
+
+        payload = base64.b64encode(
+            b"aes-256-gcm:passw0rd@example.com:443#legacy"
+        ).decode()
+        profile = parse_shadowsocks(f"ss://{payload}")
+        self.assertEqual(profile.security, "aes-256-gcm")
+        self.assertEqual(profile.uuid, "passw0rd")
+        self.assertEqual(profile.address, "example.com")
+        self.assertEqual(profile.port, 443)
+        self.assertEqual(profile.name, "legacy")
+
+    def test_shadowsocks_plugin_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            parse_shadowsocks(
+                "ss://aes-128-gcm:passw0rd@example.com:443"
+                "?plugin=obfs-local%3Bobfs%3Dhttp"
+            )
+
     def test_hysteria2_outbound_is_generated(self) -> None:
         profile = parse_hysteria2("hysteria2://host.com:443?p=passw0rd")
         config = build_config(profile, tun=False)

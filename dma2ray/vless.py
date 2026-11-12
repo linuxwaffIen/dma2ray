@@ -254,25 +254,75 @@ def parse_trojan(uri: str) -> VlessProfile:
     return profile
 
 
+def _b64decode_pad(text: str) -> bytes:
+    """base64 с url-safe алфавитом и без выравнивания (как в SIP002)."""
+    fixed = text.replace("-", "+").replace("_", "/")
+    fixed += "=" * (-len(fixed) % 4)
+    return base64.b64decode(fixed, validate=False)
+
+
+def _ss_userinfo(raw: str) -> tuple[str, str]:
+    """Разбор userinfo ss:// ссылки: method:password (plain, percent или base64)."""
+    userinfo = unquote(raw)
+    if ":" not in userinfo:
+        # Некоторые провайдеры отдают userinfo в base64
+        try:
+            decoded = _b64decode_pad(raw).decode("utf-8")
+        except Exception:
+            decoded = ""
+        if ":" in decoded:
+            userinfo = decoded
+    method, _, password = userinfo.partition(":")
+    return method, password
+
+
 def parse_shadowsocks(uri: str) -> VlessProfile:
     uri = uri.strip()
     if not uri.lower().startswith("ss://"):
         raise VlessError("Ссылка должна начинаться с ss://")
     payload = uri[len("ss://"):]
-    method_password, _, rest = payload.partition("@")
-    method, _, password = method_password.partition(":")
-    hostport = rest.split("?", 1)[0]
-    host, _, port_str = hostport.rpartition(":")
+
+    if "@" not in payload:
+        # Легаси-формат: весь payload в base64 (method:password@host:port#tag)
+        body, _, frag = payload.partition("#")
+        try:
+            decoded = _b64decode_pad(body).decode("utf-8")
+        except Exception as exc:
+            raise VlessError("Не удалось декодировать ss:// ссылку") from exc
+        if frag and "#" not in decoded:
+            decoded = decoded + "#" + frag
+        payload = decoded
+
+    body_all, _, frag = payload.partition("#")
+    name = unquote(frag).strip()
+
+    userinfo, _, hostpart = body_all.rpartition("@")
+    hostbody, _, query = hostpart.partition("?")
+    params = dict(parse_qsl(query, keep_blank_values=True))
+
+    if params.get("plugin"):
+        plugin = unquote(params["plugin"]).split(";", 1)[0]
+        raise VlessError(f"SIP003-плагины не поддерживаются: {plugin}")
+
+    host, _, port_str = hostbody.rpartition(":")
+    if not host:
+        raise VlessError("В ссылке отсутствует адрес сервера")
     try:
         port = int(port_str or "443")
     except ValueError as exc:
         raise VlessError(f"Некорректный порт: {exc}") from exc
+    if not 1 <= port <= 65535:
+        raise VlessError("Порт должен быть в диапазоне 1..65535")
+
+    method, password = _ss_userinfo(userinfo)
+    if not password:
+        raise VlessError("В ссылке отсутствует пароль")
     return replace(
         VlessProfile(
             uuid=password,
             address=host,
             port=port,
-            name=f"ss://{host}:{port}",
+            name=name or f"ss://{host}:{port}",
             security=method or "aes-128-gcm",
         ),
         protocol="shadowsocks",

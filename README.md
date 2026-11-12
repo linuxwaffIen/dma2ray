@@ -183,7 +183,9 @@ dma2ray
 - `vless://` — VLESS с pełной настройкой безопасности (none/tls/reality/xtls)
   и транспортов (tcp/raw, ws, grpc, httpupgrade, xhttp/splithttp, kcp/mkcp).
 - `trojan://` — Trojan (TLS, SNI).
-- `ss://` — Shadowsocks (метод + пароль).
+- `ss://` — Shadowsocks (SIP002 и легаси-формат; включая шифры Shadowsocks-2022:
+  `2022-blake3-aes-128-gcm`, `2022-blake3-aes-256-gcm`, `2022-blake3-chacha20-poly1305`;
+  SIP003-плагины не поддерживаются).
 - `vmess://` — VMess (преобразуется в VLESS-конфиг).
 - `hysteria2://` / `hy2://` — Hysteria 2 (QUIC, требует отдельного бинарника
   hysteria, скачивается в «Настройки → Ядра»).
