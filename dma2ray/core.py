@@ -21,7 +21,12 @@ from pathlib import Path
 from . import paths
 from .config import build_config, is_ip
 from .state import Profile, Store
-from .hysteria import HysteriaProfile, build_hysteria_config, parse_any
+from .hysteria import (
+    HysteriaProfile,
+    build_hysteria_config,
+    format_hysteria_config,
+    parse_any,
+)
 SYSTEM_DIR = Path("/usr/libexec/dma2ray")
 SYSTEM_HELPER = SYSTEM_DIR / "dma2ray-helper"
 SYSTEM_XRAY = SYSTEM_DIR / "xray"
@@ -334,7 +339,9 @@ class CoreManager:
                             http_port=int(settings["http_port"]),
                             address_override=address,
                         )
-                        self._write_config(cfg, paths.HY_CONFIG_FILE)
+                        paths.HY_CONFIG_FILE.write_text(
+                            format_hysteria_config(cfg), encoding="utf-8"
+                        )
                         paths.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
                         log_handle = paths.LOG_FILE.open("wb", buffering=0)
                         try:
