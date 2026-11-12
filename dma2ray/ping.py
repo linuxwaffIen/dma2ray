@@ -81,7 +81,7 @@ def http_ping(host: str, port: int, use_tls: bool = False, timeout: float = 4.0)
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             sock = ctx.wrap_socket(sock, server_hostname=host)
-        sock.sendall(f"HEAD / HTTP/1.1\r\nHost: {host}\r\nUser-Agent: dma2ray\r\nConnection: close\r\n\r\n".encode())
+        sock.sendall(f"GET / HTTP/1.1\r\nHost: {host}\r\nUser-Agent: dma2ray\r\nConnection: close\r\n\r\n".encode())
         if not sock.recv(1):
             sock.close()
             return None

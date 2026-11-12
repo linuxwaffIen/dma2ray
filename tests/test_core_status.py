@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from dma2ray.core import CoreManager, CoreStatus, find_core
+from dma2ray.core import CoreManager, CoreStatus, find_core, preferred_kernel_type
 
 URI = "vless://11111111-2222-3333-4444-555555555555@example.com:443?type=ws#test"
 
@@ -86,6 +86,27 @@ class CoreStatusTests(unittest.TestCase):
         manager = self._manager()
         manager.shutdown()
         self.assertEqual(manager.status.state, "stopped")
+
+    def test_preferred_kernel_type_auto_and_explicit(self) -> None:
+        from types import SimpleNamespace
+
+        self.store.set_setting("kernel_mode", "auto")
+        self.assertEqual(
+            preferred_kernel_type(self.store, SimpleNamespace(protocol="vless")), "xray"
+        )
+        self.assertEqual(
+            preferred_kernel_type(self.store, SimpleNamespace(protocol="wireguard")),
+            "amnezia-xray",
+        )
+        self.assertEqual(
+            preferred_kernel_type(self.store, SimpleNamespace(protocol="vless", jc=3)),
+            "amnezia-xray",
+        )
+        self.store.set_setting("kernel_mode", "amnezia-xray")
+        self.assertEqual(
+            preferred_kernel_type(self.store, SimpleNamespace(protocol="vless")),
+            "amnezia-xray",
+        )
 
 
 if __name__ == "__main__":
