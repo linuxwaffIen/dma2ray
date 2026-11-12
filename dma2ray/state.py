@@ -28,6 +28,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_ping": True,
     "sort_by_latency": False,
     "color_scheme": "system",
+    "auto_update_subs": False,
+    "auto_update_interval": 6,
 }
 
 LOG_LEVELS = ("debug", "info", "warning", "error")

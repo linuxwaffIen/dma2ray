@@ -31,6 +31,7 @@ from .subscriptions import FetchResult, fetch_and_parse
 from .sysproxy import SysProxyError
 from .tray import TrayController
 from .hysteria import parse_any
+from .qrcode_util import generate_qr_png, decode_qr_from_file, QRCODE_AVAILABLE
 
 MODE_LABELS = (
     "Прокси (SOCKS5/HTTP)",
@@ -108,6 +109,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         self._settings_reverting = False
         self._log_timeout: int | None = None
         self._log_dialog: Adw.Dialog | None = None
+        self._auto_update_timeout: int | None = None
         self._core = CoreManager(
             store, self._core_status_from_thread, self._ask_password_dialog
         )
@@ -134,6 +136,8 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             self._toast("Xray-core не найден — скачайте его в «Настройки → Ядро»")
         self.connect("close-request", self._on_close_request)
         self._try_start_tray(silent=True)
+        if self.store.settings.get("auto_update_subs", False):
+            self._schedule_auto_update()
 
     def _apply_color_scheme(self) -> None:
         key = str(self.store.settings.get("color_scheme", "system"))
@@ -194,6 +198,9 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             if self._log_timeout is not None:
                 GLib.source_remove(self._log_timeout)
                 self._log_timeout = None
+            if self._auto_update_timeout is not None:
+                GLib.source_remove(self._auto_update_timeout)
+                self._auto_update_timeout = None
 
     # -------------------------------------------------------------- lifecycle
     def _on_close_request(self, *_args) -> bool:
@@ -377,11 +384,18 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             description="Вставьте ссылку vless:// или URL подписки — профиль добавится и подключится.",
         )
         self.quick_entry = Adw.EntryRow(title="vless://… или URL подписки")
+        quick_suffix = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         quick_button = Gtk.Button.new_from_icon_name("go-next-symbolic")
         quick_button.add_css_class("flat")
         quick_button.set_tooltip_text("Добавить и подключить")
         quick_button.connect("clicked", self._quick_connect)
-        self.quick_entry.add_suffix(quick_button)
+        quick_suffix.append(quick_button)
+        qr_button = Gtk.Button.new_from_icon_name("emblem-photos-symbolic")
+        qr_button.add_css_class("flat")
+        qr_button.set_tooltip_text("Импортировать из QR-файла")
+        qr_button.connect("clicked", lambda *_: self._import_qr_file())
+        quick_suffix.append(qr_button)
+        self.quick_entry.add_suffix(quick_suffix)
         self.quick_entry.connect("entry-activated", self._quick_connect)
         self.quick_group.add(self.quick_entry)
         box.append(self.quick_group)
@@ -563,6 +577,16 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             lambda row, _p: self.store.set_setting("ping_type", PING_TYPES[row.get_selected()]),
         )
         interface.add(ping_type_row)
+        auto_subs_row = Adw.SwitchRow(
+            title="Автообновление подписок",
+            subtitle="Обновлять все подписки по расписанию",
+        )
+        auto_subs_row.set_active(bool(self.store.settings.get("auto_update_subs", False)))
+        auto_subs_row.connect(
+            "notify::active",
+            lambda row, _p: self._settings_auto_update_subs(row),
+        )
+        interface.add(auto_subs_row)
         page.add(interface)
         startup = Adw.PreferencesGroup(title="Запуск и трей")
         autostart_row = Adw.SwitchRow(
@@ -635,6 +659,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             "rename": self._rename_action,
             "remove-profile": self._remove_profile_action,
             "connect": self._connect_action,
+            "qr-code": self._qr_code_action,
             "update-sub": self._update_sub_action,
             "remove-sub": self._remove_sub_action,
         }
@@ -645,6 +670,101 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
 
     def _ping_action(self, _action, parameter) -> None:
         self._ping_profile(parameter.get_string())
+
+    def _qr_code_action(self, _action, parameter) -> None:
+        profile_id = parameter.get_string()
+        profile = self.store.get_profile(profile_id)
+        if not profile:
+            return
+        self._show_qr_dialog(profile)
+
+    def _show_qr_dialog(self, profile: Profile) -> None:
+        if not QRCODE_AVAILABLE:
+            self._toast(
+                "Библиотека qrcode не установлена. Установите: pip install qrcode[pil]"
+            )
+            return
+        png = generate_qr_png(profile.uri)
+        if not png:
+            self._toast("Не удалось сгенерировать QR-код")
+            return
+
+        dialog = Adw.Dialog()
+        dialog.set_title("QR-код профиля")
+        dialog.set_content_width(400)
+        dialog.set_content_height(460)
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(
+            Adw.WindowTitle(title="QR-код", subtitle=profile.name)
+        )
+        close = Gtk.Button(label="Закрыть")
+        close.connect("clicked", lambda *_: dialog.close())
+        header.pack_start(close)
+        toolbar.add_top_bar(header)
+
+        from gi.repository import GdkPixbuf
+
+        loader = GdkPixbuf.PixbufLoader.new_with_type("png")
+        loader.write(png)
+        loader.close()
+        pixbuf = loader.get_pixbuf()
+
+        image = Gtk.Image.new_from_pixbuf(pixbuf)
+        image.set_hexpand(True)
+        image.set_vexpand(True)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_child(image)
+        scrolled.set_vexpand(True)
+        scrolled.set_hexpand(True)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.append(scrolled)
+        uri_row = Adw.ActionRow(title="Ссылка", subtitle=profile.uri)
+        uri_row.set_subtitle_lines(2)
+        box.append(uri_row)
+
+        toolbar.set_content(box)
+        dialog.set_child(toolbar)
+        dialog.present(self)
+
+    def _import_qr_file(self) -> None:
+        if not QRCODE_AVAILABLE:
+            self._toast(
+                "Библиотека qrcode не установлена. Установите: pip install qrcode[pil]"
+            )
+            return
+
+        dialog = Gtk.FileDialog()
+        dialog.set_title("Выберите изображение с QR-кодом")
+        filter_any = Gtk.FileFilter()
+        filter_any.set_name("Изображения")
+        filter_any.add_pattern("*.png")
+        filter_any.add_pattern("*.jpg")
+        filter_any.add_pattern("*.jpeg")
+        filter_any.add_pattern("*.webp")
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filter_any)
+        dialog.set_filters(filters)
+
+        def on_open(_dialog, result) -> None:
+            try:
+                file = _dialog.open_finish(result)
+            except GLib.Error:
+                return
+            if not file:
+                return
+            path = file.get_path()
+            if not path:
+                return
+            uri = decode_qr_from_file(Path(path))
+            if not uri:
+                self._toast("Не удалось распознать QR-код на изображении")
+                return
+            self.import_uris([uri])
+
+        dialog.open(self, None, on_open)
 
     def _rename_action(self, _action, parameter) -> None:
         self._rename_dialog(parameter.get_string())
@@ -737,6 +857,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             for label, action in (
                 ("Подключить", "win.connect"),
                 ("Проверить задержку", "win.ping"),
+                ("Показать QR-код", "win.qr-code"),
                 ("Переименовать", "win.rename"),
                 ("Удалить", "win.remove-profile"),
             ):
@@ -1511,6 +1632,31 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         self.store.set_setting("sort_by_latency", bool(row.get_active()))
         self._rebuild_profiles()
 
+    def _settings_auto_update_subs(self, row: Adw.SwitchRow) -> None:
+        enabled = bool(row.get_active())
+        self.store.set_setting("auto_update_subs", enabled)
+        if enabled:
+            self._schedule_auto_update()
+            self._toast("Автообновление подписок включено")
+        else:
+            self._toast("Автообновление подписок выключено")
+
+    def _schedule_auto_update(self) -> None:
+        if self._auto_update_timeout is not None:
+            GLib.source_remove(self._auto_update_timeout)
+            self._auto_update_timeout = None
+        if not self.store.settings.get("auto_update_subs", False):
+            return
+        interval = int(self.store.settings.get("auto_update_interval", 6)) * 3600
+        self._auto_update_timeout = GLib.timeout_add_seconds(interval, self._auto_update_tick)
+
+    def _auto_update_tick(self) -> bool:
+        if not self._closing and self.store.subscriptions:
+            self._update_all_subscriptions()
+        # Перепланируем следующий запуск
+        self._schedule_auto_update()
+        return False
+
     def _settings_port(self, key: str, row: Adw.SpinRow) -> None:
         value = int(row.get_value())
         if self.store.settings.get(key) == value:
@@ -1791,6 +1937,9 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             if self._log_timeout is not None:
                 GLib.source_remove(self._log_timeout)
                 self._log_timeout = None
+            if self._auto_update_timeout is not None:
+                GLib.source_remove(self._auto_update_timeout)
+                self._auto_update_timeout = None
             self._log_dialog = None
         dialog.connect("closed", closed)
         self._log_dialog = dialog
