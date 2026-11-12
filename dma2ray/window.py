@@ -61,7 +61,11 @@ def _latency_class(ms: int | None) -> str:
     return "latency-bad"
 
 def _latency_text(ms: int | None) -> str:
-    return "—" if ms is None else f"{ms} мс"
+    if ms is None:
+        return "—"
+    if ms <= 0:
+        return "<1 мс"
+    return f"{ms} мс"
 
 _LATENCY_CLASSES = ("latency-good", "latency-ok", "latency-bad", "latency-unknown")
 

@@ -32,7 +32,7 @@ def tcp_ping(host: str, port: int, timeout: float = 4.0) -> int | None:
             started = time.perf_counter()
             sock.connect(sockaddr)
             elapsed = (time.perf_counter() - started) * 1000
-            return max(1, int(round(elapsed)))
+            return int(round(elapsed))
         except OSError:
             continue
         finally:
@@ -61,10 +61,10 @@ def icmp_ping(host: str, timeout: float = 4.0) -> int | None:
             return None
         match = re.search(r"time[=<](\d+\.?\d*)\s*ms", proc.stdout, re.IGNORECASE)
         if match:
-            return max(1, int(round(float(match.group(1)))))
+            return int(round(float(match.group(1))))
         match_rtt = re.search(r"=\s*[\d\.]+/([\d\.]+)/", proc.stdout)
         if match_rtt:
-            return max(1, int(round(float(match_rtt.group(1)))))
+            return int(round(float(match_rtt.group(1))))
         return None
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -87,7 +87,7 @@ def http_ping(host: str, port: int, use_tls: bool = False, timeout: float = 4.0)
             return None
         elapsed = (time.perf_counter() - started) * 1000
         sock.close()
-        return max(1, int(round(elapsed)))
+        return int(round(elapsed))
     except (OSError, ssl.SSLError):
         return None
 

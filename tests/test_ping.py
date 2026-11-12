@@ -31,7 +31,7 @@ class TestPing(unittest.TestCase):
         mock_socket_cls.return_value = mock_sock
         ms = tcp_ping("1.1.1.1", 443, timeout=1.0)
         self.assertIsNotNone(ms)
-        self.assertGreaterEqual(ms, 1)
+        self.assertGreaterEqual(ms, 0)
 
     @patch("socket.getaddrinfo", side_effect=OSError("DNS error"))
     def test_tcp_ping_dns_failure(self, _):
@@ -58,7 +58,7 @@ class TestPing(unittest.TestCase):
         mock_create.return_value = mock_sock
         ms = http_ping("example.com", 80, use_tls=False, timeout=1.0)
         self.assertIsNotNone(ms)
-        self.assertGreaterEqual(ms, 1)
+        self.assertGreaterEqual(ms, 0)
 
     @patch("socket.create_connection", side_effect=OSError("Connection refused"))
     def test_http_ping_failure(self, _):
