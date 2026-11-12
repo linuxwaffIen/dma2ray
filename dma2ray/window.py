@@ -23,10 +23,9 @@ from .installer import(
     install_core,
     install_hysteria,
 )
-from .ping import tcp_ping
 from .ping import PING_TYPE_LABELS, PING_TYPES, ping_endpoint
 from .speedtest import SpeedResult, speed_test
-from .state import LOG_LEVELS, MODES, Profile, Store
+from .state import KERNEL_MODES, LOG_LEVELS, MODES, Profile, Store
 from .subscriptions import FetchResult, fetch_and_parse
 from .sysproxy import SysProxyError
 from .tray import TrayController
@@ -38,6 +37,11 @@ MODE_LABELS = (
     "Системный прокси",
     "ВПН (TUN, нужен root)",
 )
+KERNEL_MODE_LABELS = {
+    "auto": "Автовыбор (по протоколу)",
+    "xray": "Xray-core",
+    "amnezia-xray": "Amnezia Xray",
+}
 
 SCHEMES = {
     "system": Adw.ColorScheme.DEFAULT,
@@ -1952,8 +1956,8 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         dialog = Adw.Dialog()
         dialog.set_title("Ядра")
         dialog.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
-        dialog.set_content_width(460)
-        dialog.set_content_height(420)
+        dialog.set_content_width(480)
+        dialog.set_content_height(520)
 
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
@@ -1963,6 +1967,26 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         toolbar.add_top_bar(header)
 
         page = Adw.PreferencesPage()
+
+        mode_group = Adw.PreferencesGroup(title="Выбор ядра")
+        kernel_mode_row = Adw.ComboRow(
+            title="Активное ядро",
+            subtitle="Автовыбор подбирает ядро под протокол профиля",
+            model=Gtk.StringList.new([KERNEL_MODE_LABELS[k] for k in KERNEL_MODES]),
+        )
+        current_km = str(self.store.settings.get("kernel_mode", "auto"))
+        kernel_mode_row.set_selected(
+            KERNEL_MODES.index(current_km) if current_km in KERNEL_MODES else 0
+        )
+        kernel_mode_row.connect(
+            "notify::selected",
+            lambda row, _p: self.store.set_setting(
+                "kernel_mode", KERNEL_MODES[row.get_selected()]
+            ),
+        )
+        mode_group.add(kernel_mode_row)
+        page.add(mode_group)
+
         group = Adw.PreferencesGroup(
             title="Доступные ядра",
             description="Загрузка для вашей архитектуры. Новое ядро применится при следующем подключении.",

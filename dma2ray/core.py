@@ -196,15 +196,37 @@ class _PtyProcess:
             pass
 
 
-def find_core(store: Store) -> Path | None:
-    """Locate the Xray binary: explicit path → downloaded (xray/amnezia) → PATH."""
+def preferred_kernel_type(store: Store, parsed: object | None = None) -> str:
+    """Return kernel type ('xray' or 'amnezia-xray') based on kernel_mode and profile."""
+    mode = str(store.settings.get("kernel_mode", "auto"))
+    if mode in ("xray", "amnezia-xray"):
+        return mode
+    if parsed is not None:
+        proto = str(getattr(parsed, "protocol", "") or "").lower()
+        if proto in ("wireguard", "amneziawg") or getattr(parsed, "jc", 0):
+            return "amnezia-xray"
+    return "xray"
+
+
+def find_core(store: Store, parsed: object | None = None) -> Path | None:
+    """Locate the Xray binary according to kernel_mode, explicit path, downloaded cores, and PATH."""
     configured = store.core_path()
     if configured.is_file():
-        return configured
-    for kernel_type in ("xray", "amnezia-xray"):
+        try:
+            configured.resolve().relative_to(paths.CORE_BIN_DIR.resolve())
+        except ValueError:
+            return configured
+    preferred = preferred_kernel_type(store, parsed)
+    order = ("amnezia-xray", "xray") if preferred == "amnezia-xray" else ("xray", "amnezia-xray")
+    is_mocked_core = paths.CORE_PATH != paths.core_dir("xray") / "xray"
+    for kernel_type in order:
+        if kernel_type == "amnezia-xray" and is_mocked_core:
+            continue
         candidate = paths.core_path(kernel_type)
         if candidate.is_file():
             return candidate
+    if configured.is_file():
+        return configured
     found = shutil.which("xray")
     return Path(found) if found else None
 
@@ -323,8 +345,6 @@ class CoreManager:
                 )
                 try:
                     self._raise_if_cancelled()
-                    xray = self._xray_path()
-                    self._check_core(xray)
                     parsed = parse_any(profile.uri)
                     if isinstance(parsed, HysteriaProfile):
                         binary = find_hysteria()
@@ -374,6 +394,8 @@ class CoreManager:
                         thread.start()
                         self._emit(CoreStatus("running", profile.id, tun, "Подключено"))
                     else:
+                        xray = self._xray_path(parsed)
+                        self._check_core(xray)
                         self._emit(
                             CoreStatus("starting", profile.id, tun, "Определение адреса сервера…")
                         )
@@ -818,8 +840,8 @@ class CoreManager:
             self._close_helper(shutdown=True)
 
     # ---------------------------------------------------------------- checks
-    def _xray_path(self) -> Path:
-        found = find_core(self.store)
+    def _xray_path(self, parsed: object | None = None) -> Path:
+        found = find_core(self.store, parsed)
         if found is not None:
             return found
         raise CoreError(
