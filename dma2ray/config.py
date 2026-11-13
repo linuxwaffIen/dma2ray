@@ -215,16 +215,26 @@ def build_config(
         "rules": _rules(),
         # DNS включён всегда: домен сервера резолвим сами через DoH,
         # доверяя 1.1.1.1/8.8.8.8, а не системному (потенциально
-        # подменённому) резолверу.
+        # подменённому) резолверу. Вместе с DoH добавлены обычные
+        # UDP-серверы: mihomo опрашивает все адресаты параллельно и берёт
+        # первый валидный ответ, поэтому если DoH у провайдера режется,
+        # резолв всё равно работает через UDP 53.
         "dns": {
             "enable": True,
             "enhanced-mode": "fake-ip" if tun else "redir-host",
             "fake-ip-range": "198.18.0.1/16",
             "default-nameserver": ["1.1.1.1", "8.8.8.8"],
-            "nameserver": ["https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"],
+            "nameserver": [
+                "https://1.1.1.1/dns-query",
+                "https://8.8.8.8/dns-query",
+                "1.1.1.1",
+                "8.8.8.8",
+            ],
             "proxy-server-nameserver": [
                 "https://1.1.1.1/dns-query",
                 "https://8.8.8.8/dns-query",
+                "1.1.1.1",
+                "8.8.8.8",
             ],
         },
     }

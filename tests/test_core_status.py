@@ -6,7 +6,13 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from dma2ray.core import CoreManager, CoreStatus, find_core, preferred_kernel_type
+from dma2ray.core import (
+    CoreManager,
+    CoreStatus,
+    find_core,
+    preferred_kernel_type,
+    resolve_doh,
+)
 
 URI = "vless://11111111-2222-3333-4444-555555555555@example.com:443?type=ws#test"
 
@@ -18,6 +24,42 @@ def _wait_for(predicate, timeout: float = 8.0) -> bool:
             return True
         time.sleep(0.05)
     return predicate()
+
+
+class _FakeDohResponse:
+    def __init__(self, payload: bytes) -> None:
+        self._payload = payload
+
+    def read(self) -> bytes:
+        return self._payload
+
+    def __enter__(self) -> "_FakeDohResponse":
+        return self
+
+    def __exit__(self, *args: object) -> bool:
+        return False
+
+
+class ResolveDohTests(unittest.TestCase):
+    def test_ip_is_returned_as_is(self) -> None:
+        self.assertEqual(resolve_doh("144.31.224.191"), "144.31.224.191")
+
+    def test_first_answer_wins(self) -> None:
+        def fake_urlopen(request, timeout):  # noqa: ANN001
+            if "1.1.1.1" in request.full_url:
+                payload = b'{"Answer":[{"type":5,"data":"alias."},{"type":1,"data":"144.31.224.191"}]}'
+            else:
+                payload = b'{"Answer":[{"type":1,"data":"203.0.113.7"}]}'
+            return _FakeDohResponse(payload)
+
+        with mock.patch("dma2ray.core.urllib.request.urlopen", side_effect=fake_urlopen):
+            self.assertEqual(resolve_doh("nl.sanguine.space"), "144.31.224.191")
+
+    def test_returns_none_when_all_endpoints_fail(self) -> None:
+        with mock.patch(
+            "dma2ray.core.urllib.request.urlopen", side_effect=OSError("blocked")
+        ):
+            self.assertIsNone(resolve_doh("nl.sanguine.space"))
 
 
 class CoreStatusTests(unittest.TestCase):

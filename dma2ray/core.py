@@ -5,6 +5,7 @@ import os
 import re
 import select
 import shutil
+import urllib.request
 
 try:
     import pty
@@ -28,6 +29,53 @@ SYSTEM_CORE = SYSTEM_DIR / "mihomo"
 
 class CoreError(RuntimeError):
     pass
+
+
+DOH_ENDPOINTS = (
+    "https://1.1.1.1/dns-query?name={host}&type=A",
+    "https://8.8.8.8/resolve?name={host}&type=A",
+)
+DOH_TIMEOUT = 6.0
+
+
+def resolve_doh(host: str) -> str | None:
+    """Резолв домена через DoH JSON API (1.1.1.1 и 8.8.8.8 параллельно).
+
+    Возвращает первый полученный IPv4-ответ или None, если оба DoH-сервера
+    недоступны (в этом случае домен резолвит сам mihomo через свой DNS).
+    Системный DNS при этом не используется вообще.
+    """
+    if is_ip(host):
+        return host
+    results: list[str] = []
+
+    def query(endpoint: str) -> None:
+        url = endpoint.format(host=host)
+        request = urllib.request.Request(
+            url,
+            headers={"accept": "application/dns-json", "User-Agent": "dma2ray/0.2"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=DOH_TIMEOUT) as response:
+                data = json.loads(response.read().decode("utf-8", errors="replace"))
+        except Exception:
+            return
+        for answer in data.get("Answer", []) or []:
+            if answer.get("type") == 1:
+                ip = str(answer.get("data", "")).strip()
+                if is_ip(ip):
+                    results.append(ip)
+                    return
+
+    threads = [
+        threading.Thread(target=query, args=(endpoint,), daemon=True)
+        for endpoint in DOH_ENDPOINTS
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(DOH_TIMEOUT)
+    return results[0] if results else None
 
 
 @dataclass(frozen=True)
@@ -331,12 +379,19 @@ class CoreManager:
                     core = self._core_path(parsed)
                     self._check_core(core)
                     self._emit(
-                        CoreStatus("starting", profile.id, tun, "Проверка доступности сервера…")
+                        CoreStatus("starting", profile.id, tun, "Определение адреса сервера…")
                     )
-                    # Только проверка доступности; IP-подстановку не делаем:
-                    # домен сервера mihomo резолвит сам через DoH (см. dns в
-                    # конфиге), системный DNS может быть подменён.
-                    self._resolve(parsed.address, parsed.port)
+                    # Пытаемся резолвить домен сервера через DoH прямо в
+                    # приложении: удалось — фиксируем IP в конфиге и системный
+                    # DNS не участвует вовсе. Не удалось (DoH заблокирован) —
+                    # оставляем домен: его резолвит сам mihomo через свой DNS
+                    # (DoH + UDP 53 параллельно).
+                    address_override = resolve_doh(parsed.address)
+                    if address_override is None and not is_ip(parsed.address):
+                        try:
+                            self._resolve(parsed.address, parsed.port)
+                        except CoreError:
+                            pass  # системный DNS тоже недоступен — не фатально
                     self._raise_if_cancelled()
                     settings = dict(self.store.settings)
                     config = build_config(
@@ -345,6 +400,7 @@ class CoreManager:
                         socks_port=int(settings["socks_port"]),
                         http_port=int(settings["http_port"]),
                         log_level=str(settings["log_level"]),
+                        address_override=address_override,
                     )
                     self._write_config(config)
                     self._emit(

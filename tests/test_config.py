@@ -64,8 +64,12 @@ class BuildConfigTests(unittest.TestCase):
         dns = config["dns"]
         self.assertTrue(dns["enable"])
         self.assertEqual(dns["enhanced-mode"], "fake-ip")
+        # DoH и обычный UDP параллельно: если DoH у провайдера режется,
+        # резолв идёт через UDP 53 (mihomo берёт первый валидный ответ).
         self.assertIn("https://1.1.1.1/dns-query", dns["nameserver"])
+        self.assertIn("1.1.1.1", dns["nameserver"])
         self.assertIn("https://1.1.1.1/dns-query", dns["proxy-server-nameserver"])
+        self.assertIn("8.8.8.8", dns["proxy-server-nameserver"])
 
     def test_tun_mode_ipv4_only(self) -> None:
         config = build_config(make_profile(), tun=True, enable_ipv6=False)
