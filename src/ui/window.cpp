@@ -528,7 +528,7 @@ GtkWidget* MainWindow::build_settings_page() {
     adw_action_row_set_subtitle(ADW_ACTION_ROW(mode_row), "Локальный прокси · системный прокси ОС · ВПН через tun-интерфейс");
     adw_combo_row_set_model(mode_row, G_LIST_MODEL(gtk_string_list_new(modes)));
 
-    std::string cur_mode = store_.get_setting("mode", "vpn").get<std::string>();
+    std::string cur_mode = store_.get_string_setting("mode", "vpn");
     guint mode_idx = 0;
     if (cur_mode == "system") mode_idx = 1;
     else if (cur_mode == "vpn") mode_idx = 2;
@@ -546,7 +546,7 @@ GtkWidget* MainWindow::build_settings_page() {
     AdwSpinRow* socks_row = ADW_SPIN_ROW(adw_spin_row_new_with_range(1, 65535, 1));
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(socks_row), "SOCKS5-порт");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(socks_row), "Локальный прокси для приложений");
-    adw_spin_row_set_value(socks_row, store_.get_setting("socks_port", 10808).get<int>());
+    adw_spin_row_set_value(socks_row, store_.get_int_setting("socks_port", 10808));
     g_signal_connect_swapped(socks_row, "notify::value", G_CALLBACK((+[](MainWindow* self, GParamSpec*, AdwSpinRow* r) {
         self->store_.set_setting("socks_port", static_cast<int>(adw_spin_row_get_value(r)));
     })), this);
@@ -555,7 +555,7 @@ GtkWidget* MainWindow::build_settings_page() {
     AdwSpinRow* http_row = ADW_SPIN_ROW(adw_spin_row_new_with_range(1, 65535, 1));
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(http_row), "HTTP-порт");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(http_row), "Локальный HTTP-прокси");
-    adw_spin_row_set_value(http_row, store_.get_setting("http_port", 10809).get<int>());
+    adw_spin_row_set_value(http_row, store_.get_int_setting("http_port", 10809));
     g_signal_connect_swapped(http_row, "notify::value", G_CALLBACK((+[](MainWindow* self, GParamSpec*, AdwSpinRow* r) {
         self->store_.set_setting("http_port", static_cast<int>(adw_spin_row_get_value(r)));
     })), this);
@@ -565,7 +565,7 @@ GtkWidget* MainWindow::build_settings_page() {
     AdwComboRow* log_row = ADW_COMBO_ROW(adw_combo_row_new());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(log_row), "Уровень журнала Xray");
     adw_combo_row_set_model(log_row, G_LIST_MODEL(gtk_string_list_new(log_levels)));
-    std::string cur_log = store_.get_setting("log_level", "warning").get<std::string>();
+    std::string cur_log = store_.get_string_setting("log_level", "warning");
     guint log_idx = 2;
     for (guint i = 0; log_levels[i]; ++i) {
         if (cur_log == log_levels[i]) { log_idx = i; break; }
@@ -588,7 +588,7 @@ GtkWidget* MainWindow::build_settings_page() {
     adw_action_row_set_subtitle(ADW_ACTION_ROW(scheme_row), "По умолчанию берётся из системы");
     adw_combo_row_set_model(scheme_row, G_LIST_MODEL(gtk_string_list_new(schemes)));
 
-    std::string cur_scheme = store_.get_setting("color_scheme", "system").get<std::string>();
+    std::string cur_scheme = store_.get_string_setting("color_scheme", "system");
     guint sch_idx = 0;
     if (cur_scheme == "light") sch_idx = 1;
     else if (cur_scheme == "dark") sch_idx = 2;
@@ -612,7 +612,7 @@ GtkWidget* MainWindow::build_settings_page() {
     AdwSwitchRow* auto_ping_row = ADW_SWITCH_ROW(adw_switch_row_new());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(auto_ping_row), "Автопроверка задержки");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(auto_ping_row), "Пинговать серверы при обновлении списка");
-    adw_switch_row_set_active(auto_ping_row, store_.get_setting("auto_ping", true).get<bool>());
+    adw_switch_row_set_active(auto_ping_row, store_.get_bool_setting("auto_ping", true));
     g_signal_connect_swapped(auto_ping_row, "notify::active", G_CALLBACK((+[](MainWindow* self, GParamSpec*, AdwSwitchRow* r) {
         self->store_.set_setting("auto_ping", adw_switch_row_get_active(r));
     })), this);
@@ -621,7 +621,7 @@ GtkWidget* MainWindow::build_settings_page() {
     AdwSwitchRow* sort_row = ADW_SWITCH_ROW(adw_switch_row_new());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sort_row), "Сортировать по задержке");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(sort_row), "Сначала самые быстрые серверы");
-    adw_switch_row_set_active(sort_row, store_.get_setting("sort_by_latency", false).get<bool>());
+    adw_switch_row_set_active(sort_row, store_.get_bool_setting("sort_by_latency", false));
     g_signal_connect_swapped(sort_row, "notify::active", G_CALLBACK((+[](MainWindow* self, GParamSpec*, AdwSwitchRow* r) {
         self->store_.set_setting("sort_by_latency", adw_switch_row_get_active(r));
         self->refresh_profiles_list();
@@ -632,7 +632,7 @@ GtkWidget* MainWindow::build_settings_page() {
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ping_to_row), "Таймаут проверки задержки");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(ping_to_row), "Секунды на проверку одного сервера");
     adw_spin_row_set_digits(ping_to_row, 1);
-    adw_spin_row_set_value(ping_to_row, store_.get_setting("ping_timeout", 4.0).get<double>());
+    adw_spin_row_set_value(ping_to_row, store_.get_double_setting("ping_timeout", 4.0));
     g_signal_connect_swapped(ping_to_row, "notify::value", G_CALLBACK((+[](MainWindow* self, GParamSpec*, AdwSpinRow* r) {
         self->store_.set_setting("ping_timeout", adw_spin_row_get_value(r));
     })), this);
@@ -643,7 +643,7 @@ GtkWidget* MainWindow::build_settings_page() {
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(pt_row), "Тип пинга");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(pt_row), "Метод измерения задержки до серверов");
     adw_combo_row_set_model(pt_row, G_LIST_MODEL(gtk_string_list_new(ping_types)));
-    std::string cur_pt = store_.get_setting("ping_type", "tcp").get<std::string>();
+    std::string cur_pt = store_.get_string_setting("ping_type", "tcp");
     guint pt_idx = 0;
     if (cur_pt == "tls") pt_idx = 1;
     else if (cur_pt == "icmp") pt_idx = 2;
@@ -658,7 +658,7 @@ GtkWidget* MainWindow::build_settings_page() {
     AdwSwitchRow* auto_sub_row = ADW_SWITCH_ROW(adw_switch_row_new());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(auto_sub_row), "Автообновление подписок");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(auto_sub_row), "Обновлять все подписки по расписанию");
-    adw_switch_row_set_active(auto_sub_row, store_.get_setting("auto_update_subs", false).get<bool>());
+    adw_switch_row_set_active(auto_sub_row, store_.get_bool_setting("auto_update_subs", false));
     g_signal_connect_swapped(auto_sub_row, "notify::active", G_CALLBACK((+[](MainWindow* self, GParamSpec*, AdwSwitchRow* r) {
         self->store_.set_setting("auto_update_subs", adw_switch_row_get_active(r));
     })), this);
@@ -684,7 +684,7 @@ GtkWidget* MainWindow::build_settings_page() {
     AdwSwitchRow* close_row = ADW_SWITCH_ROW(adw_switch_row_new());
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(close_row), "Закрывать окно в трей");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(close_row), "Приложение продолжит работать в фоне");
-    adw_switch_row_set_active(close_row, store_.get_setting("close_to_tray", true).get<bool>());
+    adw_switch_row_set_active(close_row, store_.get_bool_setting("close_to_tray", true));
     g_signal_connect_swapped(close_row, "notify::active", G_CALLBACK((+[](MainWindow* self, GParamSpec*, AdwSwitchRow* r) {
         self->store_.set_setting("close_to_tray", adw_switch_row_get_active(r));
     })), this);
@@ -867,7 +867,7 @@ void MainWindow::refresh_profiles_list() {
     }
 
     auto profs = store_.profiles;
-    bool sort_by_lat = store_.get_setting("sort_by_latency", false).get<bool>();
+    bool sort_by_lat = store_.get_bool_setting("sort_by_latency", false);
     if (sort_by_lat) {
         std::sort(profs.begin(), profs.end(), [&](const state::Profile& a, const state::Profile& b) {
             auto it_a = latencies_.find(a.id);
@@ -1162,7 +1162,7 @@ void MainWindow::ping_all_profiles() {
 }
 
 void MainWindow::toggle_sort() {
-    bool cur = store_.get_setting("sort_by_latency", false).get<bool>();
+    bool cur = store_.get_bool_setting("sort_by_latency", false);
     store_.set_setting("sort_by_latency", !cur);
     refresh_profiles_list();
     show_toast(!cur ? "Сортировка по задержке включена" : "Сортировка отключена");

@@ -40,6 +40,11 @@ public:
     void set_setting(const std::string& key, const nlohmann::json& value);
     nlohmann::json get_setting(const std::string& key, const nlohmann::json& default_val = nullptr) const;
 
+    bool get_bool_setting(const std::string& key, bool default_val = false) const;
+    int get_int_setting(const std::string& key, int default_val = 0) const;
+    double get_double_setting(const std::string& key, double default_val = 0.0) const;
+    std::string get_string_setting(const std::string& key, const std::string& default_val = "") const;
+
     Profile add_profile(const std::string& name, const std::string& uri, const std::string& sub_id = "");
     void remove_profile(const std::string& id);
     Profile* get_profile(const std::string& id);

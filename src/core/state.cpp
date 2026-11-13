@@ -146,6 +146,46 @@ nlohmann::json Store::get_setting(const std::string& key, const nlohmann::json& 
     return default_val;
 }
 
+bool Store::get_bool_setting(const std::string& key, bool default_val) const {
+    if (!settings.contains(key)) return default_val;
+    const auto& v = settings[key];
+    if (v.is_boolean()) return v.get<bool>();
+    if (v.is_number()) return v.get<double>() != 0.0;
+    if (v.is_string()) {
+        std::string s = v.get<std::string>();
+        return s == "true" || s == "1" || s == "yes";
+    }
+    return default_val;
+}
+
+int Store::get_int_setting(const std::string& key, int default_val) const {
+    if (!settings.contains(key)) return default_val;
+    const auto& v = settings[key];
+    if (v.is_number()) return v.get<int>();
+    if (v.is_string()) {
+        try { return std::stoi(v.get<std::string>()); } catch (...) {}
+    }
+    return default_val;
+}
+
+double Store::get_double_setting(const std::string& key, double default_val) const {
+    if (!settings.contains(key)) return default_val;
+    const auto& v = settings[key];
+    if (v.is_number()) return v.get<double>();
+    if (v.is_string()) {
+        try { return std::stod(v.get<std::string>()); } catch (...) {}
+    }
+    return default_val;
+}
+
+std::string Store::get_string_setting(const std::string& key, const std::string& default_val) const {
+    if (!settings.contains(key)) return default_val;
+    const auto& v = settings[key];
+    if (v.is_string()) return v.get<std::string>();
+    if (v.is_null()) return default_val;
+    return v.dump();
+}
+
 Profile Store::add_profile(const std::string& name, const std::string& uri, const std::string& sub_id) {
     Profile p;
     p.id = generate_uuid();
