@@ -77,6 +77,9 @@ bool download_file(
     ProgressContext ctx{on_progress};
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 300L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, file_write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ofs);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "dma2ray/0.2.1");

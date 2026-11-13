@@ -173,6 +173,32 @@ Profile* Store::get_profile(const std::string& id) {
     return nullptr;
 }
 
+void Store::rename_profile(const std::string& id, const std::string& new_name) {
+    auto* p = get_profile(id);
+    if (p) {
+        p->name = new_name;
+        p->updated_at = now_seconds();
+        save();
+    }
+}
+
+void Store::select_profile(const std::string& id) {
+    set_setting("selected_profile_id", id);
+}
+
+Profile* Store::selected_profile() {
+    auto sel = get_setting("selected_profile_id", "");
+    if (sel.is_string()) {
+        std::string id = sel.get<std::string>();
+        auto* p = get_profile(id);
+        if (p) return p;
+    }
+    if (!profiles.empty()) {
+        return &profiles.front();
+    }
+    return nullptr;
+}
+
 Subscription Store::add_subscription(const std::string& name, const std::string& url) {
     Subscription s;
     s.id = generate_uuid();
@@ -200,6 +226,51 @@ Subscription* Store::get_subscription(const std::string& id) {
         if (s.id == id) return &s;
     }
     return nullptr;
+}
+
+void Store::set_subscription_error(const std::string& id, const std::string& error) {
+    auto* s = get_subscription(id);
+    if (s) {
+        s->last_error = error;
+        save();
+    }
+}
+
+std::vector<Profile*> Store::profiles_for_subscription(const std::string& sub_id) {
+    std::vector<Profile*> res;
+    for (auto& p : profiles) {
+        if (p.subscription_id == sub_id) res.push_back(&p);
+    }
+    return res;
+}
+
+int Store::replace_subscription_profiles(const std::string& sub_id, const std::vector<std::pair<std::string, std::string>>& items) {
+    // Remove existing for this sub
+    profiles.erase(std::remove_if(profiles.begin(), profiles.end(), [&](const Profile& p) {
+        return p.subscription_id == sub_id;
+    }), profiles.end());
+
+    double t = now_seconds();
+    int count = 0;
+    for (const auto& [name, uri] : items) {
+        Profile p;
+        p.id = generate_uuid();
+        p.name = name;
+        p.uri = uri;
+        p.subscription_id = sub_id;
+        p.created_at = t;
+        p.updated_at = t;
+        profiles.push_back(p);
+        count++;
+    }
+
+    auto* s = get_subscription(sub_id);
+    if (s) {
+        s->updated_at = t;
+        s->last_error = "";
+    }
+    save();
+    return count;
 }
 
 } // namespace dma2ray::state

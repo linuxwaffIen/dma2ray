@@ -5,7 +5,9 @@
 #include "dma2ray/window.hpp"
 
 #include <adwaita.h>
+#include <gdk/gdk.h>
 #include <memory>
+#include <cstdlib>
 
 static void on_activate(GtkApplication* app, gpointer user_data) {
     auto* store = static_cast<dma2ray::state::Store*>(user_data);
@@ -32,6 +34,11 @@ static void on_activate(GtkApplication* app, gpointer user_data) {
 }
 
 int main(int argc, char** argv) {
+    // Prioritize native Wayland backend if available, fallback to X11
+    if (!std::getenv("GDK_BACKEND")) {
+        gdk_set_allowed_backends("wayland,x11,*");
+    }
+
     dma2ray::paths::ensure_dirs();
     dma2ray::state::Store store;
 

@@ -97,11 +97,41 @@ void test_store_isolated() {
     std::cout << "[PASS] test_store_isolated" << std::endl;
 }
 
+void test_flags_and_subscriptions() {
+    auto tmp = std::filesystem::temp_directory_path() / "dma2ray_sandbox_test_sub" / "state.json";
+    std::filesystem::remove(tmp);
+
+    dma2ray::state::Store store(tmp);
+    auto sub = store.add_subscription("MySub", "https://example.com/sub");
+    assert(store.subscriptions.size() == 1);
+    assert(store.get_subscription(sub.id) != nullptr);
+
+    std::vector<std::pair<std::string, std::string>> items = {
+        {"US Node", "vless://uuid@us.node.com:443#US"},
+        {"NL Server", "vless://uuid@nl.node.com:443#NL"}
+    };
+    int count = store.replace_subscription_profiles(sub.id, items);
+    assert(count == 2);
+    assert(store.profiles.size() == 2);
+    assert(store.profiles_for_subscription(sub.id).size() == 2);
+
+    store.rename_profile(store.profiles[0].id, "US Node Renamed");
+    assert(store.profiles[0].name == "US Node Renamed");
+
+    store.remove_subscription(sub.id);
+    assert(store.subscriptions.empty());
+    assert(store.profiles.empty()); // Profiles of removed sub should be deleted
+
+    std::filesystem::remove_all(tmp.parent_path());
+    std::cout << "[PASS] test_flags_and_subscriptions" << std::endl;
+}
+
 int main() {
     test_vless_parsing();
     test_hysteria_parsing();
     test_trojan_shadowsocks();
     test_store_isolated();
+    test_flags_and_subscriptions();
     std::cout << "All C++ native tests passed!" << std::endl;
     return 0;
 }

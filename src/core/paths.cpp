@@ -5,7 +5,7 @@
 
 namespace dma2ray::paths {
 
-const std::string APP_ID = "org.dma2ray.Dma2ray";
+const std::string APP_ID = "io.github.dma2ray.Dma2ray";
 const std::string APP_TITLE = "Dma2ray";
 const std::string VERSION = "0.2.1";
 
@@ -68,13 +68,22 @@ std::string current_arch() {
 
 std::filesystem::path core_dir(const std::string& kernel_type, const std::string& arch) {
     std::string m = arch.empty() ? current_arch() : arch;
-    std::string kind = kernel_type.rfind("amnezia", 0) == 0 ? "amnezia" : (kernel_type == "hysteria" ? "hysteria" : "xray");
+    if (kernel_type == "hysteria") {
+        return core_bin_dir();
+    }
+    std::string kind = kernel_type.rfind("amnezia", 0) == 0 ? "amnezia" : "xray";
     return core_bin_dir() / m / kind;
 }
 
 std::filesystem::path core_path(const std::string& kernel_type, const std::string& arch) {
-    std::string bin_name = (kernel_type == "hysteria") ? "hysteria" : "xray";
-    return core_dir(kernel_type, arch) / bin_name;
+    if (kernel_type == "hysteria") {
+        auto p1 = core_bin_dir() / "hysteria";
+        if (std::filesystem::exists(p1)) return p1;
+        auto p2 = core_bin_dir() / (arch.empty() ? current_arch() : arch) / "hysteria" / "hysteria";
+        if (std::filesystem::exists(p2)) return p2;
+        return p1;
+    }
+    return core_dir(kernel_type, arch) / "xray";
 }
 
 void ensure_dirs() {

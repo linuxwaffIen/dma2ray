@@ -25,6 +25,7 @@ set(CORE_SOURCES
     src/core/subscriptions.cpp
     src/core/sysproxy.cpp
     src/core/autostart.cpp
+    src/core/flags.cpp
     src/core/installer.cpp
     src/core/manager.cpp
 )

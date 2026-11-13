@@ -43,10 +43,16 @@ public:
     Profile add_profile(const std::string& name, const std::string& uri, const std::string& sub_id = "");
     void remove_profile(const std::string& id);
     Profile* get_profile(const std::string& id);
+    void rename_profile(const std::string& id, const std::string& new_name);
+    void select_profile(const std::string& id);
+    Profile* selected_profile();
 
     Subscription add_subscription(const std::string& name, const std::string& url);
     void remove_subscription(const std::string& id);
     Subscription* get_subscription(const std::string& id);
+    void set_subscription_error(const std::string& id, const std::string& error);
+    std::vector<Profile*> profiles_for_subscription(const std::string& sub_id);
+    int replace_subscription_profiles(const std::string& sub_id, const std::vector<std::pair<std::string, std::string>>& items);
 
 private:
     std::filesystem::path path_;
