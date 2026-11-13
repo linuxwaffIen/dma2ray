@@ -84,20 +84,25 @@ def _pick_icon(theme: Gtk.IconTheme | None, *candidates: str) -> str:
 
 
 def _active_monitor() -> Gdk.Monitor | None:
-    """Монитор под курсором, иначе первый доступный."""
+    """Монитор под курсором или первый доступный."""
     display = Gdk.Display.get_default()
     if display is None:
         return None
-    monitor: Gdk.Monitor | None = None
-    seat = display.get_default_seat()
-    pointer = seat.get_pointer() if seat else None
-    if pointer:
-        surface, _x, _y = pointer.get_position()
-        if surface:
-            monitor = display.get_monitor_at_surface(surface)
-    if monitor is None and display.get_n_monitors() > 0:
-        monitor = display.get_monitor(0)
-    return monitor
+    monitors = display.get_monitors()
+    if not monitors or monitors.get_n_items() == 0:
+        return None
+    try:
+        seat = display.get_default_seat()
+        pointer = seat.get_pointer() if seat else None
+        if pointer and hasattr(pointer, "get_position"):
+            res = pointer.get_position()
+            if res and res[0]:
+                mon = display.get_monitor_at_surface(res[0])
+                if mon:
+                    return mon
+    except Exception:
+        pass
+    return monitors.get_item(0)
 
 
 def _fit_to_monitor(width: int, height: int) -> tuple[int, int]:
