@@ -19,17 +19,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import paths
-from .config import build_config, is_ip
+from .config import build_config, dump_yaml, is_ip
 from .state import Profile, Store
-from .hysteria import (
-    HysteriaProfile,
-    build_hysteria_config,
-    format_hysteria_config,
-    parse_any,
-)
+from .hysteria import parse_any
 SYSTEM_DIR = Path("/usr/libexec/dma2ray")
 SYSTEM_HELPER = SYSTEM_DIR / "dma2ray-helper"
-SYSTEM_XRAY = SYSTEM_DIR / "xray"
+SYSTEM_CORE = SYSTEM_DIR / "mihomo"
 
 class CoreError(RuntimeError):
     pass
@@ -197,37 +192,24 @@ class _PtyProcess:
 
 
 def preferred_kernel_type(store: Store, parsed: object | None = None) -> str:
-    """Return kernel type ('xray' or 'amnezia-xray') based on kernel_mode and profile."""
-    mode = str(store.settings.get("kernel_mode", "auto"))
-    if mode in ("xray", "amnezia-xray"):
-        return mode
-    if parsed is not None:
-        proto = str(getattr(parsed, "protocol", "") or "").lower()
-        if proto in ("wireguard", "amneziawg") or getattr(parsed, "jc", 0):
-            return "amnezia-xray"
-    return "xray"
+    """Ядро одно — mihomo. Функция сохранена для совместимости вызовов."""
+    return "mihomo"
 
 
 def find_core(store: Store, parsed: object | None = None) -> Path | None:
-    """Locate the Xray binary according to kernel_mode, explicit path, downloaded cores, and PATH."""
+    """Locate the mihomo binary: explicit path, downloaded core, then PATH."""
     configured = store.core_path()
     if configured.is_file():
         try:
             configured.resolve().relative_to(paths.CORE_BIN_DIR.resolve())
         except ValueError:
             return configured
-    preferred = preferred_kernel_type(store, parsed)
-    order = ("amnezia-xray", "xray") if preferred == "amnezia-xray" else ("xray", "amnezia-xray")
-    is_mocked_core = paths.CORE_PATH != paths.core_dir("xray") / "xray"
-    for kernel_type in order:
-        if kernel_type == "amnezia-xray" and is_mocked_core:
-            continue
-        candidate = paths.core_path(kernel_type)
-        if candidate.is_file():
-            return candidate
+    candidate = paths.core_path()
+    if candidate.is_file():
+        return candidate
     if configured.is_file():
         return configured
-    found = shutil.which("xray")
+    found = shutil.which("mihomo")
     return Path(found) if found else None
 
 
@@ -268,7 +250,7 @@ class _HelperClient:
 
 
 class CoreManager:
-    """Owns the Xray process and, for TUN mode, the privileged helper."""
+    """Owns the mihomo process and, for TUN mode, the privileged helper."""
 
     def __init__(self, store: Store, on_status, ask_password=None) -> None:
         self.store = store
@@ -302,14 +284,14 @@ class CoreManager:
             self._intentional = False
             self._cancel.clear()
         thread = threading.Thread(
-            target=self._start_worker, args=(profile, tun), name="xray-start", daemon=True
+            target=self._start_worker, args=(profile, tun), name="mihomo-start", daemon=True
         )
         thread.start()
 
     def stop(self) -> None:
         # Cancel a pending pkexec prompt or config check as soon as possible.
         self._cancel.set()
-        thread = threading.Thread(target=self._stop_worker, name="xray-stop", daemon=True)
+        thread = threading.Thread(target=self._stop_worker, name="mihomo-stop", daemon=True)
         thread.start()
 
     def shutdown(self) -> None:
@@ -341,87 +323,39 @@ class CoreManager:
                     return
                 self._stop_internal(shutdown_helper=True, notify=False)
                 self._emit(
-                    CoreStatus("starting", profile.id, tun, "Проверка Xray-core…")
+                    CoreStatus("starting", profile.id, tun, "Проверка mihomo…")
                 )
                 try:
                     self._raise_if_cancelled()
                     parsed = parse_any(profile.uri)
-                    if isinstance(parsed, HysteriaProfile):
-                        binary = find_hysteria()
-                        if binary is None:
-                            raise CoreError("Hysteria не найдена. Скачайте её в меню «Ядра».")
-                        address = self._resolve(parsed.address, parsed.port)
-                        settings = dict(self.store.settings)
-                        cfg = build_hysteria_config(
-                            parsed,
-                            tun=tun,
-                            socks_port=int(settings["socks_port"]),
-                            http_port=int(settings["http_port"]),
-                            address_override=address,
-                        )
-                        paths.HY_CONFIG_FILE.write_text(
-                            format_hysteria_config(cfg), encoding="utf-8"
-                        )
-                        paths.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-                        log_handle = paths.LOG_FILE.open("wb", buffering=0)
-                        try:
-                            proc = subprocess.Popen(
-                                [str(binary), "client", "-c", str(paths.HY_CONFIG_FILE)],
-                                stdin=subprocess.DEVNULL,
-                                stdout=log_handle,
-                                stderr=subprocess.STDOUT,
-                                start_new_session=True,
-                            )
-                        except OSError as exc:
-                            log_handle.close()
-                            raise CoreError(f"Не удалось запустить Hysteria: {exc}") from exc
-                        finally:
-                            try:
-                                log_handle.close()
-                            except Exception:
-                                pass
-                        time.sleep(0.9)
-                        code = proc.poll()
-                        if code is not None:
-                            raise CoreError(
-                                f"Hysteria завершился с кодом {code}\n{_tail(paths.LOG_FILE)}".strip()
-                            )
-                        self._direct_proc = proc
-                        thread = threading.Thread(
-                            target=self._monitor_direct, args=(proc,),
-                            name="hysteria-monitor", daemon=True,
-                        )
-                        thread.start()
-                        self._emit(CoreStatus("running", profile.id, tun, "Подключено"))
+                    core = self._core_path(parsed)
+                    self._check_core(core)
+                    self._emit(
+                        CoreStatus("starting", profile.id, tun, "Определение адреса сервера…")
+                    )
+                    address = self._resolve(parsed.address, parsed.port)
+                    self._raise_if_cancelled()
+                    settings = dict(self.store.settings)
+                    config = build_config(
+                        parsed,
+                        tun=tun,
+                        socks_port=int(settings["socks_port"]),
+                        http_port=int(settings["http_port"]),
+                        log_level=str(settings["log_level"]),
+                        address_override=address,
+                    )
+                    self._write_config(config)
+                    self._emit(
+                       CoreStatus("starting", profile.id, tun, "Проверка конфигурации…")
+                    )
+                    self._validate(core)
+                    self._raise_if_cancelled()
+                    paths.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    if tun:
+                        self._start_tun(core)
                     else:
-                        xray = self._xray_path(parsed)
-                        self._check_core(xray)
-                        self._emit(
-                            CoreStatus("starting", profile.id, tun, "Определение адреса сервера…")
-                        )
-                        address = self._resolve(parsed.address, parsed.port)
-                        self._raise_if_cancelled()
-                        settings = dict(self.store.settings)
-                        config = build_config(
-                            parsed,
-                            tun=tun,
-                            socks_port=int(settings["socks_port"]),
-                            http_port=int(settings["http_port"]),
-                            log_level=str(settings["log_level"]),
-                            address_override=address,
-                        )
-                        self._write_config(config)
-                        self._emit(
-                           CoreStatus("starting", profile.id, tun, "Проверка конфигурации…")
-                        )
-                        self._validate(xray)
-                        self._raise_if_cancelled()
-                        paths.LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-                        if tun:
-                            self._start_tun(xray)
-                        else:
-                            self._start_direct(xray)
-                        self._emit(CoreStatus("running", profile.id, tun, "Подключено"))
+                        self._start_direct(core)
+                    self._emit(CoreStatus("running", profile.id, tun, "Подключено"))
                 except Exception as exc:
                         self._stop_internal(shutdown_helper=True, notify=False)
                         if self._cancel.is_set() or self._intentional:
@@ -453,11 +387,11 @@ class CoreManager:
             self._emit(CoreStatus("stopped"))
 
     # --------------------------------------------------------------- direct
-    def _start_direct(self, xray: Path) -> None:
+    def _start_direct(self, core: Path) -> None:
         log_handle = paths.LOG_FILE.open("wb", buffering=0)
         try:
             proc = subprocess.Popen(
-                [str(xray), "run", "-c", str(paths.CONFIG_FILE)],
+                [str(core), "-d", str(paths.MIHOME_DIR), "-f", str(paths.CONFIG_FILE)],
                 stdin=subprocess.DEVNULL,
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
@@ -465,7 +399,7 @@ class CoreManager:
             )
         except OSError as exc:
             log_handle.close()
-            raise CoreError(f"Не удалось запустить Xray: {exc}") from exc
+            raise CoreError(f"Не удалось запустить mihomo: {exc}") from exc
         finally:
             try:
                 log_handle.close()
@@ -475,11 +409,11 @@ class CoreManager:
         code = proc.poll()
         if code is not None:
             raise CoreError(
-                f"Xray завершился с кодом {code}\n{_tail(paths.LOG_FILE)}".strip()
+                f"mihomo завершился с кодом {code}\n{_tail(paths.LOG_FILE)}".strip()
             )
         self._direct_proc = proc
         thread = threading.Thread(
-            target=self._monitor_direct, args=(proc,), name="xray-monitor", daemon=True
+            target=self._monitor_direct, args=(proc,), name="mihomo-monitor", daemon=True
         )
         thread.start()
 
@@ -494,14 +428,14 @@ class CoreManager:
                     "error",
                     self._status.profile_id,
                     self._status.tun,
-                    "Xray неожиданно завершился",
+                    "mihomo неожиданно завершился",
                     f"Код выхода: {code}",
                     _tail(paths.LOG_FILE),
                 )
             )
 
     # ------------------------------------------------------------------ tun
-    def _start_tun(self, xray: Path) -> None:
+    def _start_tun(self, core: Path) -> None:
         self._emit(
             CoreStatus(
                 "starting",
@@ -510,32 +444,34 @@ class CoreManager:
                 "Запуск TUN (может потребоваться пароль)…",
             )
         )
-        self._ensure_helper(xray)
+        self._ensure_helper(core)
         assert self._helper is not None
         response = self._helper.request({"cmd": "start"}, timeout=45)
         if not response.get("ok"):
             log = response.get("log") or _tail(paths.LOG_FILE)
-            error = response.get("error") or "Xray не запустился"
+            error = response.get("error") or "mihomo не запустился"
             raise CoreError(f"{error}\n{log}".strip())
         thread = threading.Thread(
-            target=self._monitor_tun, name="xray-tun-monitor", daemon=True
+            target=self._monitor_tun, name="mihomo-tun-monitor", daemon=True
         )
         thread.start()
 
-    def _helper_command(self, xray: Path) -> tuple[list[str], bool]:
+    def _helper_command(self, core: Path) -> tuple[list[str], bool]:
         getuid = getattr(os, "getuid", lambda: 0)
         getgid = getattr(os, "getgid", lambda: 0)
         geteuid = getattr(os, "geteuid", lambda: 0)
         run_as_root = geteuid() == 0
         use_system = (
-            not run_as_root and SYSTEM_HELPER.is_file() and SYSTEM_XRAY.is_file()
+            not run_as_root and SYSTEM_HELPER.is_file() and SYSTEM_CORE.is_file()
         )
-        target_xray = SYSTEM_XRAY if use_system else xray
+        target_core = SYSTEM_CORE if use_system else core
         args = [
             "--socket",
             str(paths.PRIV_SOCKET),
-            "--xray",
-            str(target_xray),
+            "--core",
+            str(target_core),
+            "--dir",
+            str(paths.MIHOMO_ROOT_DIR),
             "--config",
             str(paths.CONFIG_FILE),
             "--log",
@@ -560,14 +496,14 @@ class CoreManager:
                 command = [pkexec, paths.python_bin(), str(paths.PRIV_SCRIPT), *args]
         return command, run_as_root
 
-    def _ensure_helper(self, xray: Path) -> None:
+    def _ensure_helper(self, core: Path) -> None:
         use_system = (
-            os.geteuid() != 0 and SYSTEM_HELPER.is_file() and SYSTEM_XRAY.is_file()
+            os.geteuid() != 0 and SYSTEM_HELPER.is_file() and SYSTEM_CORE.is_file()
         )
         if use_system:
-            xray = SYSTEM_XRAY  # root запускает только свою копию ядра
+            core = SYSTEM_CORE  # root запускает только свою копию ядра
 
-        key = (str(xray), str(paths.CONFIG_FILE), str(paths.LOG_FILE))
+        key = (str(core), str(paths.MIHOMO_ROOT_DIR), str(paths.CONFIG_FILE), str(paths.LOG_FILE))
         if self._helper is not None and self._helper_key == key:
             try:
                 response = self._helper.request({"cmd": "status"}, timeout=5)
@@ -582,7 +518,7 @@ class CoreManager:
         except FileNotFoundError:
             pass
 
-        command, run_as_root = self._helper_command(xray)
+        command, run_as_root = self._helper_command(core)
         helper_log = paths.CACHE_DIR / "helper.log"
         helper_log.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -759,7 +695,7 @@ class CoreManager:
                 with self._lock:
                     if self._intentional:
                         return
-                    message = response.get("error") or "Xray остановился"
+                    message = response.get("error") or "mihomo остановился"
                     log = response.get("log") or _tail(paths.LOG_FILE)
                     self._emit(
                         CoreStatus(
@@ -840,21 +776,21 @@ class CoreManager:
             self._close_helper(shutdown=True)
 
     # ---------------------------------------------------------------- checks
-    def _xray_path(self, parsed: object | None = None) -> Path:
+    def _core_path(self, parsed: object | None = None) -> Path:
         found = find_core(self.store, parsed)
         if found is not None:
             return found
         raise CoreError(
-            "Xray-core не найден. Скачайте его в «Настройки → Ядро → Скачать» "
-            "или укажите путь к существующему бинарнику xray."
+            "mihomo не найден. Скачайте его в «Настройки → Ядра → Скачать» "
+            "или укажите путь к существующему бинарнику mihomo."
         )
 
     @staticmethod
-    def _check_core(xray: Path) -> None:
-        if not xray.is_file():
-            raise CoreError(f"Xray-core не найден: {xray}")
-        if not os.access(xray, os.X_OK):
-            raise CoreError(f"Xray-core не исполняемый: {xray}")
+    def _check_core(core: Path) -> None:
+        if not core.is_file():
+            raise CoreError(f"mihomo не найден: {core}")
+        if not os.access(core, os.X_OK):
+            raise CoreError(f"mihomo не исполняемый: {core}")
 
     def _resolve(self, host: str, port: int) -> str:
         if is_ip(host):
@@ -875,8 +811,7 @@ class CoreManager:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(config, handle, ensure_ascii=False, indent=2)
-                handle.write("\n")
+                handle.write(dump_yaml(config))
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(tmp, target)
@@ -887,25 +822,21 @@ class CoreManager:
                 pass
 
     @staticmethod
-    def _validate(xray: Path) -> None:
+    def _validate(core: Path) -> None:
         try:
             result = subprocess.run(
-                [str(xray), "run", "-test", "-c", str(paths.CONFIG_FILE)],
+                [str(core), "-t", "-d", str(paths.MIHOME_DIR), "-f", str(paths.CONFIG_FILE)],
                 capture_output=True,
                 text=True,
                 timeout=25,
             )
         except subprocess.TimeoutExpired as exc:
-            raise CoreError("Проверка конфигурации Xray заняла слишком много времени") from exc
+            raise CoreError("Проверка конфигурации mihomo заняла слишком много времени") from exc
         if result.returncode != 0:
             output = (result.stdout + "\n" + result.stderr).strip()
             lines = [line.strip() for line in output.splitlines() if line.strip()]
             detail = lines[-1] if lines else "неизвестная ошибка"
             raise CoreError(f"{detail}\n{output[-3000:]}")
 
-def find_hysteria() -> Path | None:
-    local = paths.CORE_BIN_DIR / "hysteria"
-    if local.is_file():
-        return local
-    found = shutil.which("hysteria")
-    return Path(found) if found else None
+def find_mihomo(store: Store) -> Path | None:
+    return find_core(store)

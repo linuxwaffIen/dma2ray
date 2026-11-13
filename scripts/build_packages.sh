@@ -63,7 +63,7 @@ Section: net
 Priority: optional
 Architecture: $DEB_ARCH
 Maintainer: Dma2ray contributors <linuxwaffIen@users.noreply.github.com>
-Description: Dma2ray - VLESS client for Linux (GTK4/libadwaita, Xray-core)
+Description: Dma2ray - VLESS client for Linux (GTK4/libadwaita, mihomo)
  Homepage: https://github.com/linuxwaffIen/dma2ray
 DEBCONTROL
 
@@ -123,7 +123,7 @@ cp -a dist/dma2ray.dist/array.so dist/dma2ray.dist/zlib.so dist/dma2ray.dist/uni
 cat > "$ARCH_STAGE/.PKGINFO" <<PKGINFO
 pkgname = dma2ray
 pkgver = 0.2.0-1
-pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, Xray-core)
+pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, mihomo)
 url = https://github.com/linuxwaffIen/dma2ray
 arch = $PKG_ARCH
 license = GPL-3.0-only
@@ -168,7 +168,7 @@ SIZE=$(stat -c%s "$APK_STAGE/usr/usr/lib/dma2ray/app/dma2ray")
 cat > "$APK_STAGE/.PKGINFO" <<PKGINFO
 pkgname = dma2ray
 pkgver = 0.2.0-r1
-pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, Xray-core)
+pkgdesc = Dma2ray VLESS client (GTK4/libadwaita, mihomo)
 url = https://github.com/linuxwaffIen/dma2ray
 arch = $APK_ARCH
 license = GPL-3.0-only

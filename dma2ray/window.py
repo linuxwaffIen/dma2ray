@@ -14,18 +14,10 @@ from .accent_ui import AccentMixin, themed_button
 from . import autostart, paths, sysproxy
 from .core import CoreManager, CoreStatus, find_core
 from .flags import flag_for
-from .installer import(
-    HY_ASSETS,
-    ASSETS_XRAY,
-    SUPPORTED_ARCHS,
-    asset_name,
-    current_arch,
-    install_core,
-    install_hysteria,
-)
+from .installer import SUPPORTED_ARCHS, current_arch, install_core
 from .ping import PING_TYPE_LABELS, PING_TYPES, ping_endpoint
 from .speedtest import SpeedResult, speed_test
-from .state import KERNEL_MODES, LOG_LEVELS, MODES, Profile, Store
+from .state import LOG_LEVELS, MODES, Profile, Store
 from .subscriptions import FetchResult, fetch_and_parse
 from .sysproxy import SysProxyError
 from .tray import TrayController
@@ -38,9 +30,7 @@ MODE_LABELS = (
     "ВПН (TUN, нужен root)",
 )
 KERNEL_MODE_LABELS = {
-    "auto": "Автовыбор (по протоколу)",
-    "xray": "Xray-core",
-    "amnezia-xray": "Amnezia Xray",
+    "auto": "Автоматически",
 }
 
 SCHEMES = {
@@ -178,7 +168,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         self._refresh_all()
         self._update_status(self._core.status)
         if find_core(self.store) is None:
-            self._toast("Xray-core не найден — скачайте его в «Настройки → Ядро»")
+            self._toast("mihomo не найден — скачайте его в «Настройки → Ядра»")
         self.connect("close-request", self._on_close_request)
         self._try_start_tray(silent=True)
         if self.store.settings.get("auto_update_subs", False):
@@ -304,7 +294,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         menu.append("Проверить все задержки", "win.ping-all")
         menu.append("Тест скорости", "win.speed-test")
         menu.append("Настройки", "win.settings")
-        menu.append("Журнал Xray", "win.show-log")
+        menu.append("Журнал mihomo", "win.show-log")
         menu.append("О программе", "win.about")
         menu.append("Ядра", "win.kernels")
         menu.append("Выход", "win.quit")
@@ -551,7 +541,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         http_row.set_digits(0)
         http_row.connect("notify::value", lambda row, _p: self._settings_port("http_port", row))
         connection.add(http_row)
-        log_row = Adw.ComboRow(title="Уровень журнала Xray")
+        log_row = Adw.ComboRow(title="Уровень журнала mihomo")
         log_row.set_model(Gtk.StringList.new(list(LOG_LEVELS)))
         current_log = str(self.store.settings.get("log_level", "warning"))
         log_row.set_selected(LOG_LEVELS.index(current_log) if current_log in LOG_LEVELS else 2)
@@ -667,7 +657,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         startup.add(auto_row)
         page.add(startup)
         diagnostics = Adw.PreferencesGroup(title="Диагностика")
-        log_action = Adw.ActionRow(title="Журнал Xray", subtitle="Последние сообщения ядра")
+        log_action = Adw.ActionRow(title="Журнал mihomo", subtitle="Последние сообщения ядра")
         log_action.set_activatable(True)
         log_action.connect("activated", lambda *_: self._show_log())
         diagnostics.add(log_action)
@@ -1038,7 +1028,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             self.home_status.set_text("Подключено")
             self.home_detail.set_text(subtitle)
         elif state == "starting":
-            subtitle = status.detail or "Запуск Xray…"
+            subtitle = status.detail or "Запуск mihomo…"
             self.window_title.set_subtitle("Подключение…")
             self._set_connect_button(
                 "Подключение…", "network-transmit-receive-symbolic", sensitive=False
@@ -1776,7 +1766,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
 
     def _install_core_for_arch(
         self, arch: str, btn: "Gtk.Button", row: "Adw.ActionRow | None" = None,
-        kernel_type: str = "xray",
+        kernel_type: str = "mihomo",
     ) -> None:
         if self._core.is_running:
             self._toast("Сначала отключитесь, затем обновите ядро")
@@ -1791,10 +1781,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             GLib.idle_add(self._core_progress, fraction, message, arch, kernel_type)
         def worker() -> None:
             try:
-                if kernel_type == "hysteria":
-                    path = install_hysteria(progress, arch)
-                else:
-                    path = install_core(progress, arch, kernel_type)
+                path = install_core(progress, arch)
             except Exception as exc:
                 GLib.idle_add(self._core_install_done, None, str(exc), arch, kernel_type)
             else:
@@ -1865,7 +1852,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         path: str | None,
         error: str | None,
         arch: str | None = None,
-        kernel_type: str = "xray",
+        kernel_type: str = "mihomo",
     ) -> bool:
         key = f"{arch}:{kernel_type}" if arch is not None else None
         row = self._core_tabs.get(key) if key else None
@@ -1880,13 +1867,9 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         if del_btn is not None:
             del_btn.set_sensitive(True)
             del_btn.set_visible(installed)
-        label = {
-            "xray": "Xray-core",
-            "amnezia-xray": "Amnezia Xray",
-            "hysteria": "Hysteria",
-        }.get(kernel_type, kernel_type)
+        label = {"mihomo": "mihomo"}.get(kernel_type, kernel_type)
         if path:
-            if kernel_type == "xray":
+            if kernel_type == "mihomo":
                 self.store.set_setting("core_path", path)
             self._toast(f"{label} установлен")
         else:
@@ -1894,7 +1877,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         return False
     
     def _choose_core(self) -> None:
-        dialog = Gtk.FileDialog(title="Выбрать бинарник Xray")
+        dialog = Gtk.FileDialog(title="Выбрать бинарник mihomo")
         dialog.open(self, None, self._core_file_chosen)
 
     def _core_file_chosen(self, dialog: Gtk.FileDialog, result) -> None:
@@ -1910,20 +1893,20 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         self.store.set_setting("core_path", path)
         if hasattr(self, "core_row"):
             self.core_row.set_subtitle(self._core_subtitle())
-        self._toast("Путь к Xray сохранён")
+        self._toast("Путь к mihomo сохранён")
 
     def _check_core_async(self) -> None:
-        xray = self.store.core_path()
+        core = self.store.core_path()
         def worker() -> None:
             import subprocess
             try:
                 result = subprocess.run(
-                    [str(xray), "version"], capture_output=True, text=True, timeout=15
+                    [str(core), "-v"], capture_output=True, text=True, timeout=15
                 )
                 text = (result.stdout + result.stderr).strip() or f"код {result.returncode}"
             except Exception as exc:
                 text = str(exc)
-            GLib.idle_add(self._toast, f"Xray: {text.splitlines()[0]}")
+            GLib.idle_add(self._toast, f"mihomo: {text.splitlines()[0]}")
         threading.Thread(target=worker, name="core-check", daemon=True).start()
 
     def _open_data_dir(self, *_args) -> None:
@@ -1938,12 +1921,12 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             self._log_dialog.present(self)
             return
         dialog = Adw.Dialog()
-        dialog.set_title("Журнал Xray")
+        dialog.set_title("Журнал mihomo")
         _apply_dialog_size(dialog, 760, 560)
         toolbar = Adw.ToolbarView()
         header = Adw.HeaderBar()
         header.set_title_widget(
-            Adw.WindowTitle(title="Журнал Xray", subtitle=str(paths.LOG_FILE))
+            Adw.WindowTitle(title="Журнал mihomo", subtitle=str(paths.LOG_FILE))
         )
         refresh = Gtk.Button.new_from_icon_name("view-refresh-symbolic")
         refresh.add_css_class("flat")
@@ -1990,7 +1973,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
 
     # ------------------------------------------------------------------ kernels
     def _show_kernels_dialog(self) -> None:
-        """Диалог «Ядра»: Xray и Amnezia Xray для архитектуры пользователя."""
+        """Диалог «Ядра»: mihomo для архитектуры пользователя."""
         machine = current_arch()
         dialog = Adw.Dialog()
         dialog.set_title("Ядра")
@@ -2006,25 +1989,6 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
 
         page = Adw.PreferencesPage()
 
-        mode_group = Adw.PreferencesGroup(title="Выбор ядра")
-        kernel_mode_row = Adw.ComboRow(
-            title="Активное ядро",
-            subtitle="Автовыбор подбирает ядро под протокол профиля",
-            model=Gtk.StringList.new([KERNEL_MODE_LABELS[k] for k in KERNEL_MODES]),
-        )
-        current_km = str(self.store.settings.get("kernel_mode", "auto"))
-        kernel_mode_row.set_selected(
-            KERNEL_MODES.index(current_km) if current_km in KERNEL_MODES else 0
-        )
-        kernel_mode_row.connect(
-            "notify::selected",
-            lambda row, _p: self.store.set_setting(
-                "kernel_mode", KERNEL_MODES[row.get_selected()]
-            ),
-        )
-        mode_group.add(kernel_mode_row)
-        page.add(mode_group)
-
         group = Adw.PreferencesGroup(
             title="Доступные ядра",
             description="Загрузка для вашей архитектуры. Новое ядро применится при следующем подключении.",
@@ -2033,19 +1997,15 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         self._core_buttons.clear()
         self._core_delete_buttons.clear()
         kernels = (
-            ("xray", "Xray-core", "Официальное ядро XTLS", "applications-system-symbolic"),
-            ("amnezia-xray", "Amnezia Xray", "Сборка Xray от Amnezia", "security-high-symbolic"),
-            ("hysteria", "Hysteria 2", "QUIC-прокси от apernet", "network-wireless-symbolic"),
+            (
+                "mihomo",
+                "mihomo",
+                "Ядро Clash.Meta: VLESS/Reality, Trojan, Shadowsocks, Hysteria2, TUN",
+                "applications-system-symbolic",
+            ),
         )
         for kernel_type, title, hint, icon_name in kernels:
-            if kernel_type == "hysteria":
-                supported = machine in HY_ASSETS
-            else:
-                try:
-                    asset_name(kernel_type, machine)
-                    supported = machine in SUPPORTED_ARCHS
-                except RuntimeError:
-                    supported = False
+            supported = machine in SUPPORTED_ARCHS
 
             key = f"{machine}:{kernel_type}"
             subtitle = hint if supported else f"Недоступно для {machine}"
@@ -2116,11 +2076,10 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
             version=paths.VERSION,
             comments=(
                 "Клиент VLESS для Linux на GTK4/libadwaita.\n"
-                "Ядро — Xray-core, включая нативный TUN-режим.\n"
-                "Клиент создан на базе Xray — благодарности разработчику "
-                "этого ядра: https://github.com/XTLS/Xray-core"
+                "Ядро — mihomo (Clash.Meta), включая нативный TUN-режим.\n"
+                "Благодарности разработчикам ядра: https://github.com/MetaCubeX/mihomo"
             ),
-            website="https://github.com/XTLS/Xray-core",
+            website="https://github.com/MetaCubeX/mihomo",
             license_type=Gtk.License.GPL_3_0_ONLY,
         )
         dialog.present(self)

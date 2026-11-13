@@ -2,11 +2,11 @@
 Type=Application
 Version=1.0
 Name=Dma2ray
-Comment=VLESS client with Xray TUN support
+Comment=VLESS client with mihomo TUN support
 Exec=dma2ray
 Icon=io.github.dma2ray.Dma2ray
 Terminal=false
 Categories=Network;
-Keywords=VLESS;Xray;VPN;Proxy;
+Keywords=VLESS;mihomo;VPN;Proxy;
 MimeType=x-scheme-handler/vless;
 StartupNotify=true

@@ -35,7 +35,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 
 LOG_LEVELS = ("debug", "info", "warning", "error")
 PING_TYPES = ("tcp", "http", "icmp")
-KERNEL_MODES = ("auto", "xray", "amnezia-xray")
+KERNEL_MODES = ("auto",)
 
 # Режимы подключения: локальный прокси, системный прокси ОС, TUN-ВПН.
 MODES = ("proxy", "system", "vpn")

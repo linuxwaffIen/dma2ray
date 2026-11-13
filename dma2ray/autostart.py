@@ -37,7 +37,7 @@ def desktop_entry() -> str:
             "Type=Application",
             "Version=1.0",
             f"Name={paths.APP_TITLE}",
-            "Comment=VLESS client with Xray TUN support",
+            "Comment=VLESS client with mihomo TUN support",
             f"Exec={_command()}",
             f"Icon={paths.ICON_NAME}",
             "Terminal=false",

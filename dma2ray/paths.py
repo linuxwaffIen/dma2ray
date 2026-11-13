@@ -55,24 +55,24 @@ def core_arch_dir(arch: str | None = None) -> Path:
     return CORE_BIN_DIR / (arch or current_arch())
 
 
-def core_dir(kernel_type: str = "xray", arch: str | None = None) -> Path:
-    """Каталог ядра: bin/<arch>/xray или bin/<arch>/amnezia."""
-    kind = "amnezia" if kernel_type.startswith("amnezia") else "xray"
-    return core_arch_dir(arch) / kind
+def core_dir(kernel_type: str = "mihomo", arch: str | None = None) -> Path:
+    """Каталог ядра: bin/<arch>/mihomo (аргумент kernel_type оставлен для совместимости)."""
+    return core_arch_dir(arch) / "mihomo"
 
 
-CORE_PATH = core_dir("xray") / "xray"
+CORE_PATH = core_dir() / "mihomo"
 
 
-def core_path(kernel_type: str = "xray", arch: str | None = None) -> Path:
-    if kernel_type == "xray" and arch is None:
-        return CORE_PATH
-    return core_dir(kernel_type, arch) / "xray"
+def core_path(kernel_type: str = "mihomo", arch: str | None = None) -> Path:
+    return core_dir(kernel_type, arch) / "mihomo"
 
-LOG_FILE = CACHE_DIR / "xray.log"
-CONFIG_FILE = CACHE_DIR / "config.json"
-HY_PATH = CORE_BIN_DIR / "hysteria"
-HY_CONFIG_FILE = CACHE_DIR / "config-hy.yaml"
+LOG_FILE = CACHE_DIR / "mihomo.log"
+CONFIG_FILE = CACHE_DIR / "config.yaml"
+# Рабочие каталоги ядра (аргумент -d): cache.db и служебные файлы mihomo.
+# Отдельный каталог для root-запуска (TUN через helper), чтобы root не
+# оставлял файлы, недоступные для записи пользователю.
+MIHOMO_DIR = DATA_DIR / "mihomo"
+MIHOMO_ROOT_DIR = CACHE_DIR / "mihomo-root"
 PRIV_SOCKET = RUNTIME_DIR / "privileged.sock"
 TRAY_SOCKET = RUNTIME_DIR / "tray.sock"
 ICON_NAME = "io.github.dma2ray.Dma2ray"
@@ -165,54 +165,8 @@ def _migrate_legacy() -> None:
             pass
 
 
-def _migrate_core_layout() -> None:
-    """Старые bin/xray, bin/amnezia → bin/<arch>/xray, bin/<arch>/amnezia."""
-    target_xray = core_dir("xray")
-    target_amnezia = core_dir("amnezia-xray")
-
-    legacy = CORE_BIN_DIR / "xray"
-    if legacy.is_file():
-        temporary = CORE_BIN_DIR / ".xray-legacy"
-        try:
-            legacy.replace(temporary)
-            target_xray.mkdir(parents=True, exist_ok=True)
-            temporary.replace(target_xray / "xray")
-        except OSError:
-            pass
-    elif legacy.is_dir():
-        try:
-            if target_xray.exists():
-                for item in legacy.iterdir():
-                    destination = target_xray / item.name
-                    if not destination.exists():
-                        item.replace(destination)
-            else:
-                target_xray.parent.mkdir(parents=True, exist_ok=True)
-                legacy.replace(target_xray)
-        except OSError:
-            pass
-
-    legacy_amnezia = CORE_BIN_DIR / "amnezia"
-    if legacy_amnezia.is_dir() and not target_amnezia.exists():
-        try:
-            target_amnezia.parent.mkdir(parents=True, exist_ok=True)
-            legacy_amnezia.replace(target_amnezia)
-        except OSError:
-            pass
-
-    for name in ("geoip.dat", "geosite.dat", "LICENSE", "README.md"):
-        source = CORE_BIN_DIR / name
-        if source.is_file():
-            try:
-                target_xray.mkdir(parents=True, exist_ok=True)
-                source.replace(target_xray / name)
-            except OSError:
-                pass
-
-
 def ensure_dirs() -> None:
     _migrate_legacy()
-    _migrate_core_layout()
     for directory, mode in (
         (CONFIG_DIR, 0o700),
         (DATA_DIR, 0o700),
@@ -221,8 +175,9 @@ def ensure_dirs() -> None:
         (RUNTIME_DIR, 0o700),
         (CORE_BIN_DIR, 0o755),
         (core_arch_dir(), 0o755),
-        (core_dir("xray"), 0o755),
-        (core_dir("amnezia-xray"), 0o755),
+        (core_dir(), 0o755),
+        (MIHOMO_DIR, 0o700),
+        (MIHOMO_ROOT_DIR, 0o700),
     ):
         directory.mkdir(parents=True, exist_ok=True)
         try:

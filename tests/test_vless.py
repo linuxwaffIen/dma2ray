@@ -156,7 +156,7 @@ class ParseVlessTests(unittest.TestCase):
                     parse_vless(
                         f"vless://{UUID}@example.com:443?type={transport}"
                     )
-                self.assertIn("Xray 26", str(context.exception))
+                self.assertIn("не поддерживается ядром mihomo", str(context.exception))
 
     def test_splithttp_alias(self) -> None:
         profile = parse_vless(f"vless://{UUID}@example.com:443?type=splithttp")
