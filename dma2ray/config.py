@@ -207,11 +207,28 @@ def build_config(
         "bind-address": "127.0.0.1",
         "allow-lan": False,
         "ipv6": bool(tun and (is_ipv6_supported() if enable_ipv6 is None else enable_ipv6)),
+        # uTLS-отпечаток браузера для всех TLS-исходящих соединений:
+        # без него ClientHello Go-клиента легко детектируется DPI.
+        "global-client-fingerprint": "chrome",
         "proxies": [proxy],
         "proxy-groups": [
             {"name": PROXY_GROUP, "type": "select", "proxies": [proxy["name"]]}
         ],
         "rules": _rules(),
+        # DNS включён всегда: домен сервера резолвим сами через DoH,
+        # доверяя 1.1.1.1/8.8.8.8, а не системному (потенциально
+        # подменённому) резолверу.
+        "dns": {
+            "enable": True,
+            "enhanced-mode": "fake-ip" if tun else "redir-host",
+            "fake-ip-range": "198.18.0.1/16",
+            "default-nameserver": ["1.1.1.1", "8.8.8.8"],
+            "nameserver": ["https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"],
+            "proxy-server-nameserver": [
+                "https://1.1.1.1/dns-query",
+                "https://8.8.8.8/dns-query",
+            ],
+        },
     }
 
     if tun:
@@ -222,12 +239,6 @@ def build_config(
             "dns-hijack": ["any:53"],
             "auto-route": True,
             "auto-detect-interface": True,
-        }
-        config["dns"] = {
-            "enable": True,
-            "enhanced-mode": "fake-ip",
-            "fake-ip-range": "198.18.0.1/16",
-            "nameserver": ["1.1.1.1", "8.8.8.8"],
         }
 
     return config

@@ -29,7 +29,7 @@ class BuildConfigTests(unittest.TestCase):
         self.assertFalse(config["allow-lan"])
         self.assertFalse(config["ipv6"])
         self.assertNotIn("tun", config)
-        self.assertNotIn("dns", config)
+        self.assertEqual(config["global-client-fingerprint"], "chrome")
 
         proxy = config["proxies"][0]
         self.assertEqual(proxy["type"], "vless")
@@ -63,7 +63,8 @@ class BuildConfigTests(unittest.TestCase):
         dns = config["dns"]
         self.assertTrue(dns["enable"])
         self.assertEqual(dns["enhanced-mode"], "fake-ip")
-        self.assertIn("1.1.1.1", dns["nameserver"])
+        self.assertIn("https://1.1.1.1/dns-query", dns["nameserver"])
+        self.assertIn("https://1.1.1.1/dns-query", dns["proxy-server-nameserver"])
 
     def test_tun_mode_ipv4_only(self) -> None:
         config = build_config(make_profile(), tun=True, enable_ipv6=False)

@@ -331,9 +331,12 @@ class CoreManager:
                     core = self._core_path(parsed)
                     self._check_core(core)
                     self._emit(
-                        CoreStatus("starting", profile.id, tun, "Определение адреса сервера…")
+                        CoreStatus("starting", profile.id, tun, "Проверка доступности сервера…")
                     )
-                    address = self._resolve(parsed.address, parsed.port)
+                    # Только проверка доступности; IP-подстановку не делаем:
+                    # домен сервера mihomo резолвит сам через DoH (см. dns в
+                    # конфиге), системный DNS может быть подменён.
+                    self._resolve(parsed.address, parsed.port)
                     self._raise_if_cancelled()
                     settings = dict(self.store.settings)
                     config = build_config(
@@ -342,7 +345,6 @@ class CoreManager:
                         socks_port=int(settings["socks_port"]),
                         http_port=int(settings["http_port"]),
                         log_level=str(settings["log_level"]),
-                        address_override=address,
                     )
                     self._write_config(config)
                     self._emit(
