@@ -305,8 +305,10 @@ void MainWindow::refresh_profiles_list() {
 
     for (const auto& prof : store_.profiles) {
         AdwActionRow* row = ADW_ACTION_ROW(adw_action_row_new());
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), prof.name.empty() ? prof.uri.c_str() : prof.name.c_str());
-        adw_action_row_set_subtitle(row, prof.uri.c_str());
+        g_autofree gchar* esc_title = g_markup_escape_text(prof.name.empty() ? prof.uri.c_str() : prof.name.c_str(), -1);
+        g_autofree gchar* esc_subtitle = g_markup_escape_text(prof.uri.c_str(), -1);
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), esc_title);
+        adw_action_row_set_subtitle(row, esc_subtitle);
 
         GtkWidget* check = gtk_image_new_from_icon_name("object-select-symbolic");
         gtk_widget_set_visible(check, prof.id == sel_id);
