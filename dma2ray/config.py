@@ -177,10 +177,22 @@ def to_mihomo_proxy(
     return proxy
 
 
-def _rules() -> list[str]:
-    return [
-        f"IP-CIDR,{cidr},DIRECT,no-resolve" for cidr in PRIVATE_NETWORKS
-    ] + [f"MATCH,{PROXY_GROUP}"]
+def _rules(server_ip: str | None = None) -> list[str]:
+    rules: list[str] = []
+    if server_ip:
+        # Трафик к самому серверу — всегда мимо прокси (иначе петля:
+        # соединение к серверу пойдёт через сам сервер).
+        rules.append(f"IP-CIDR,{server_ip}/32,DIRECT,no-resolve")
+    rules += [f"IP-CIDR,{cidr},DIRECT,no-resolve" for cidr in PRIVATE_NETWORKS]
+    rules.append(f"MATCH,{PROXY_GROUP}")
+    return rules
+
+
+def _server_ip(profile: VlessProfile | HysteriaProfile, address_override: str | None) -> str | None:
+    for candidate in (address_override, profile.address):
+        if candidate and is_ip(candidate):
+            return candidate
+    return None
 
 
 def build_config(
@@ -199,6 +211,7 @@ def build_config(
         raise ValueError("SOCKS и HTTP порты должны различаться")
 
     proxy = to_mihomo_proxy(profile, address_override)
+    server_ip = _server_ip(profile, address_override)
 
     config: dict[str, Any] = {
         "mode": "rule",
@@ -212,7 +225,7 @@ def build_config(
         "proxy-groups": [
             {"name": PROXY_GROUP, "type": "select", "proxies": [proxy["name"]]}
         ],
-        "rules": _rules(),
+        "rules": _rules(server_ip),
         # DNS включён всегда: домен сервера резолвим сами через DoH,
         # доверяя 1.1.1.1/8.8.8.8, а не системному (потенциально
         # подменённому) резолверу. Вместе с DoH добавлены обычные
@@ -240,7 +253,7 @@ def build_config(
     }
 
     if tun:
-        config["tun"] = {
+        tun_config: dict[str, Any] = {
             "enable": True,
             "stack": "mixed",
             "mtu": 1500,
@@ -248,6 +261,14 @@ def build_config(
             "auto-route": True,
             "auto-detect-interface": True,
         }
+        if server_ip:
+            # Исключаем адрес сервера из маршрутов TUN: собственный трафик
+            # mihomo к серверу обязан уходить через физический интерфейс,
+            # иначе он заворачивается обратно в TUN (петля) и соединение
+            # падает по таймауту.
+            prefix = "128" if ":" in server_ip else "32"
+            tun_config["route-exclude-address"] = [f"{server_ip}/{prefix}"]
+        config["tun"] = tun_config
 
     return config
 

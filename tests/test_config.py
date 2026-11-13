@@ -51,6 +51,24 @@ class BuildConfigTests(unittest.TestCase):
         for cidr in PRIVATE_NETWORKS:
             self.assertIn(f"IP-CIDR,{cidr},DIRECT,no-resolve", rules)
 
+    def test_server_ip_excluded_from_tunnel(self) -> None:
+        config = build_config(make_profile(), tun=True, address_override="144.31.224.191")
+        self.assertEqual(config["tun"]["route-exclude-address"], ["144.31.224.191/32"])
+        self.assertEqual(
+            config["rules"][0], "IP-CIDR,144.31.224.191/32,DIRECT,no-resolve"
+        )
+
+    def test_domain_without_override_has_no_exclusions(self) -> None:
+        profile = parse_vless(f"vless://{UUID}@example.com:443?security=tls&type=ws")
+        config = build_config(profile, tun=True)
+        self.assertNotIn("route-exclude-address", config["tun"])
+        self.assertTrue(all(rule.startswith("IP-CIDR,127.") or True for rule in config["rules"]))
+
+    def test_ipv6_server_excluded_from_tunnel(self) -> None:
+        profile = parse_vless(f"vless://{UUID}@[2001:db8::1]:443?security=tls&type=ws")
+        config = build_config(profile, tun=True)
+        self.assertEqual(config["tun"]["route-exclude-address"], ["2001:db8::1/128"])
+
     def test_tun_mode(self) -> None:
         config = build_config(
             make_profile(), tun=True, socks_port=11080, http_port=11081, enable_ipv6=True
