@@ -375,7 +375,7 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         self.big_icon = Gtk.Image.new_from_icon_name(
             _pick_icon(theme, "network-vpn-symbolic", "network-wired-symbolic", "security-high-symbolic")
         )
-        self.big_button = themed_button(28.0)
+        self.big_button = themed_button(65.0)
         self.server_card = themed_button(16.0)
         self.big_icon.set_pixel_size(48)
         self.big_button.set_child(self.big_icon)

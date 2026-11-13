@@ -162,12 +162,11 @@ STRUCTURAL_CSS = """
 }
 
 .connect-big {
-    min-width: 96px;
-    min-height: 96px;
+    min-width: 130px;
+    min-height: 130px;
     padding: 0;
-    border-radius: 28px;
-    transition: background-color 240ms cubic-bezier(0.2, 0, 0, 1),
-                box-shadow 240ms cubic-bezier(0.2, 0, 0, 1);
+    border-radius: 999px;
+    transition: all 250ms ease;
 }
 
 @keyframes md-halo {
@@ -309,35 +308,39 @@ COLOR_CSS = """
 }
 
 .connect-idle {
-    background-image: linear-gradient(135deg, @md_fab_from 0%, @md_fab_to 100%);
-    background-color: @accent_bg_color;
-    color: @accent_fg_color;
-    box-shadow: 0 1px 3px alpha(@md_shadow, 0.30),
-                0 8px 20px alpha(@md_fab_to, 0.30);
+    background: linear-gradient(135deg, #3584e4, #1c71d8);
+    background-color: #3584e4;
+    color: white;
+    box-shadow: 0 4px 16px alpha(#3584e4, 0.40);
 }
 .connect-idle:hover {
-    box-shadow: 0 2px 6px alpha(@md_shadow, 0.32),
-                0 12px 28px alpha(@md_fab_to, 0.38);
+    box-shadow: 0 6px 22px alpha(#3584e4, 0.55);
 }
-.connect-idle:active { box-shadow: 0 1px 2px alpha(@md_shadow, 0.30); }
+.connect-idle:active { box-shadow: 0 2px 6px alpha(#3584e4, 0.35); }
 
 .connect-active {
-    background-image: linear-gradient(135deg, @md_secure_from 0%, @md_secure_to 100%);
-    background-color: @success_bg_color;
-    color: @success_fg_color;
-    box-shadow: 0 1px 3px alpha(@md_shadow, 0.30),
-                0 8px 22px alpha(@md_secure_to, 0.34);
+    background: linear-gradient(135deg, #2ec27e, #26a269);
+    background-color: #2ec27e;
+    color: white;
+    box-shadow: 0 4px 16px alpha(#2ec27e, 0.40);
 }
 .connect-active:hover {
-    box-shadow: 0 2px 6px alpha(@md_shadow, 0.32),
-                0 12px 30px alpha(@md_secure_to, 0.42);
+    box-shadow: 0 6px 22px alpha(#2ec27e, 0.55);
 }
-.connect-active:active { box-shadow: 0 1px 2px alpha(@md_shadow, 0.30); }
+.connect-active:active { box-shadow: 0 2px 6px alpha(#2ec27e, 0.35); }
 
 .connect-busy {
-    background-image: none;
-    background-color: @md_surface_container_highest;
-    color: @md_on_surface_variant;
+    background: linear-gradient(135deg, #e5a50a, #c67c00);
+    background-color: #e5a50a;
+    color: white;
+    box-shadow: 0 4px 16px alpha(#e5a50a, 0.40);
+}
+
+.connect-error {
+    background: linear-gradient(135deg, #e01b24, #c01c28);
+    background-color: #e01b24;
+    color: white;
+    box-shadow: 0 4px 16px alpha(#e01b24, 0.40);
 }
 
 .server-card {
@@ -443,11 +446,11 @@ switch > slider {
 switch:checked > slider { background-color: @accent_fg_color; }
 switch:disabled { opacity: 0.4; }
 
-entry:focus-within {
+entry:focus {
     outline: 2px solid alpha(@accent_color, 0.55);
     outline-offset: -2px;
 }
-button:focus-visible, switch:focus-visible {
+button:focus, switch:focus {
     outline: 2px solid alpha(@accent_color, 0.70);
     outline-offset: 2px;
 }
