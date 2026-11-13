@@ -12,6 +12,19 @@ pkg_check_modules(JSON REQUIRED IMPORTED_TARGET nlohmann_json)
 pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
 pkg_check_modules(OPENSSL REQUIRED IMPORTED_TARGET openssl)
 
+find_program(GLIB_COMPILE_RESOURCES glib-compile-resources REQUIRED)
+
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/resources.c
+    COMMAND ${GLIB_COMPILE_RESOURCES}
+        --target=${CMAKE_CURRENT_BINARY_DIR}/resources.c
+        --generate-source
+        --sourcedir=${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources/dma2ray.gresource.xml
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources/dma2ray.gresource.xml
+    COMMENT "Compiling embedded icons into static GResource"
+)
+
 include_directories(include)
 
 set(CORE_SOURCES
@@ -28,6 +41,7 @@ set(CORE_SOURCES
     src/core/flags.cpp
     src/core/installer.cpp
     src/core/manager.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/resources.c
 )
 
 set(UI_SOURCES

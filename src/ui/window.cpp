@@ -16,6 +16,80 @@
 
 namespace dma2ray::ui {
 
+static void install_icon_theme() {
+    paths::ensure_icons();
+    GdkDisplay* display = gdk_display_get_default();
+    if (!display) return;
+    GtkIconTheme* theme = gtk_icon_theme_get_for_display(display);
+    gtk_icon_theme_add_resource_path(theme, "/io/github/dma2ray/Dma2ray/icons");
+    gtk_icon_theme_add_resource_path(theme, "/io/github/dma2ray/Dma2ray/icons/scalable/actions");
+    gtk_icon_theme_add_resource_path(theme, "/io/github/dma2ray/Dma2ray/icons/scalable/status");
+    gtk_icon_theme_add_search_path(theme, paths::icons_dir().c_str());
+
+    for (const char* root : {"/usr/share/icons/Adwaita", "/usr/local/share/icons/Adwaita", "/usr/share/icons/hicolor"}) {
+        if (std::filesystem::exists(root)) {
+            gtk_icon_theme_add_search_path(theme, root);
+            auto sym = std::filesystem::path(root) / "symbolic";
+            if (std::filesystem::exists(sym)) {
+                gtk_icon_theme_add_search_path(theme, sym.c_str());
+                for (const auto& entry : std::filesystem::directory_iterator(sym)) {
+                    if (entry.is_directory()) {
+                        gtk_icon_theme_add_search_path(theme, entry.path().c_str());
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void set_image_icon_with_fallback(GtkImage* img, const std::string& name, int pixel_size = 0) {
+    if (!img) return;
+    GdkDisplay* disp = gdk_display_get_default();
+    bool found = false;
+    if (disp) {
+        GtkIconTheme* theme = gtk_icon_theme_get_for_display(disp);
+        found = gtk_icon_theme_has_icon(theme, name.c_str());
+    }
+    if (found) {
+        gtk_image_set_from_icon_name(img, name.c_str());
+    } else {
+        std::string res = "/io/github/dma2ray/Dma2ray/icons/" + name + ".svg";
+        gtk_image_set_from_resource(img, res.c_str());
+    }
+    if (pixel_size > 0) {
+        gtk_image_set_pixel_size(img, pixel_size);
+    }
+}
+
+static GtkWidget* create_image_with_fallback(const std::string& name, int pixel_size = 0) {
+    GtkWidget* img = gtk_image_new();
+    set_image_icon_with_fallback(GTK_IMAGE(img), name, pixel_size);
+    return img;
+}
+
+static GtkWidget* create_button_from_icon_fallback(const std::string& name) {
+    GtkWidget* btn = gtk_button_new();
+    GtkWidget* img = create_image_with_fallback(name);
+    gtk_button_set_child(GTK_BUTTON(btn), img);
+    return btn;
+}
+
+static void strip_switcher_icons(GtkWidget* root) {
+    if (!root) return;
+    std::vector<GtkWidget*> stack = {root};
+    while (!stack.empty()) {
+        GtkWidget* w = stack.back();
+        stack.pop_back();
+        if (GTK_IS_IMAGE(w)) {
+            gtk_widget_set_visible(w, FALSE);
+            continue;
+        }
+        for (GtkWidget* c = gtk_widget_get_first_child(w); c != nullptr; c = gtk_widget_get_next_sibling(c)) {
+            stack.push_back(c);
+        }
+    }
+}
+
 static std::string format_time(double timestamp) {
     if (timestamp <= 0.0) return "никогда";
     std::time_t t = static_cast<std::time_t>(timestamp);
@@ -84,6 +158,8 @@ void MainWindow::show_toast(const std::string& msg) {
 }
 
 void MainWindow::build_ui() {
+    install_icon_theme();
+
     window_ = adw_application_window_new(GTK_APPLICATION(app_));
     gtk_window_set_title(GTK_WINDOW(window_), paths::APP_TITLE.c_str());
     gtk_window_set_default_size(GTK_WINDOW(window_), 440, 800);
@@ -120,18 +196,24 @@ void MainWindow::build_ui() {
     gtk_widget_set_vexpand(view_stack_, TRUE);
 
     GtkWidget* home_page = build_home_page();
-    adw_view_stack_add_titled(ADW_VIEW_STACK(view_stack_), home_page, "home", "Главная");
+    adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), home_page, "home", "Главная", "user-home-symbolic");
 
     GtkWidget* servers_page = build_servers_page();
-    adw_view_stack_add_titled(ADW_VIEW_STACK(view_stack_), servers_page, "servers", "Серверы");
+    adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), servers_page, "servers", "Серверы", "network-server-symbolic");
 
     GtkWidget* settings_page = build_settings_page();
-    adw_view_stack_add_titled(ADW_VIEW_STACK(view_stack_), settings_page, "settings", "Настройки");
+    adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), settings_page, "settings", "Настройки", "emblem-system-symbolic");
 
     AdwViewSwitcherBar* switcher_bar = ADW_VIEW_SWITCHER_BAR(adw_view_switcher_bar_new());
     adw_view_switcher_bar_set_stack(switcher_bar, ADW_VIEW_STACK(view_stack_));
     adw_view_switcher_bar_set_reveal(switcher_bar, TRUE);
     gtk_widget_add_css_class(GTK_WIDGET(switcher_bar), "main-switcherbar");
+
+    // Hide any switcher icons so that tabs are text-only, exactly matching Python original
+    strip_switcher_icons(GTK_WIDGET(switcher_bar));
+    g_signal_connect_swapped(view_stack_, "notify::visible-child", G_CALLBACK((+[](GtkWidget* sb) {
+        strip_switcher_icons(sb);
+    })), GTK_WIDGET(switcher_bar));
 
     adw_toolbar_view_add_bottom_bar(toolbar, GTK_WIDGET(switcher_bar));
     adw_toolbar_view_set_content(toolbar, view_stack_);
@@ -220,8 +302,7 @@ GtkWidget* MainWindow::build_home_page() {
     gtk_label_set_wrap(GTK_LABEL(detail_label_), TRUE);
     gtk_box_append(GTK_BOX(box), detail_label_);
 
-    big_icon_ = gtk_image_new_from_icon_name("network-vpn-symbolic");
-    gtk_image_set_pixel_size(GTK_IMAGE(big_icon_), 48);
+    big_icon_ = create_image_with_fallback("network-vpn-symbolic", 48);
 
     big_button_ = gtk_button_new();
     gtk_button_set_child(GTK_BUTTON(big_button_), big_icon_);
@@ -721,7 +802,7 @@ void MainWindow::refresh_ui_status() {
         std::string sub = prof ? (prof->name + " · " + mode_label) : mode_label;
         gtk_label_set_text(GTK_LABEL(detail_label_), sub.c_str());
         gtk_widget_add_css_class(big_button_, "connect-active");
-        gtk_image_set_from_icon_name(GTK_IMAGE(big_icon_), "media-playback-stop-symbolic");
+        set_image_icon_with_fallback(GTK_IMAGE(big_icon_), "media-playback-stop-symbolic", 48);
         gtk_widget_set_tooltip_text(big_button_, "Отключиться");
 
         // Sync sysproxy if mode == system
@@ -735,14 +816,14 @@ void MainWindow::refresh_ui_status() {
         gtk_label_set_text(GTK_LABEL(status_label_), "Подключение…");
         gtk_label_set_text(GTK_LABEL(detail_label_), "Запуск Xray…");
         gtk_widget_add_css_class(big_button_, "connect-busy");
-        gtk_image_set_from_icon_name(GTK_IMAGE(big_icon_), "network-transmit-receive-symbolic");
+        set_image_icon_with_fallback(GTK_IMAGE(big_icon_), "network-transmit-receive-symbolic", 48);
         gtk_widget_set_tooltip_text(big_button_, "Подключение…");
     } else if (st.state == manager::State::Error) {
         adw_window_title_set_subtitle(ADW_WINDOW_TITLE(header_title_), "Ошибка");
         gtk_label_set_text(GTK_LABEL(status_label_), "Ошибка");
         gtk_label_set_text(GTK_LABEL(detail_label_), st.error.c_str());
         gtk_widget_add_css_class(big_button_, "connect-idle");
-        gtk_image_set_from_icon_name(GTK_IMAGE(big_icon_), "network-vpn-symbolic");
+        set_image_icon_with_fallback(GTK_IMAGE(big_icon_), "network-vpn-symbolic", 48);
         gtk_widget_set_tooltip_text(big_button_, "Повторить");
         if (mode_str == "system") {
             system::set_sysproxy(false);
@@ -757,7 +838,7 @@ void MainWindow::refresh_ui_status() {
             gtk_label_set_text(GTK_LABEL(detail_label_), "Выберите профиль или добавьте новый");
         }
         gtk_widget_add_css_class(big_button_, "connect-idle");
-        gtk_image_set_from_icon_name(GTK_IMAGE(big_icon_), "network-vpn-symbolic");
+        set_image_icon_with_fallback(GTK_IMAGE(big_icon_), "network-vpn-symbolic", 48);
         gtk_widget_set_tooltip_text(big_button_, "Подключиться");
         if (mode_str == "system") {
             system::set_sysproxy(false);

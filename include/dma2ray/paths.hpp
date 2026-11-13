@@ -20,10 +20,12 @@ std::filesystem::path log_file();
 std::filesystem::path priv_socket();
 
 std::filesystem::path core_bin_dir();
+std::filesystem::path icons_dir();
 std::filesystem::path core_dir(const std::string& kernel_type = "xray", const std::string& arch = "");
 std::filesystem::path core_path(const std::string& kernel_type = "xray", const std::string& arch = "");
 
 void ensure_dirs();
+void ensure_icons();
 std::string current_arch();
 
 } // namespace dma2ray::paths

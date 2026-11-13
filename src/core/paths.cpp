@@ -56,6 +56,10 @@ std::filesystem::path core_bin_dir() {
     return data_dir() / "bin";
 }
 
+std::filesystem::path icons_dir() {
+    return data_dir() / "icons";
+}
+
 std::string current_arch() {
     struct utsname buf;
     if (uname(&buf) == 0) {
@@ -86,11 +90,17 @@ std::filesystem::path core_path(const std::string& kernel_type, const std::strin
     return core_dir(kernel_type, arch) / "xray";
 }
 
+void ensure_icons() {
+    auto dir = icons_dir();
+    std::filesystem::create_directories(dir);
+}
+
 void ensure_dirs() {
     std::filesystem::create_directories(config_dir());
     std::filesystem::create_directories(cache_dir());
     std::filesystem::create_directories(data_dir());
     std::filesystem::create_directories(core_bin_dir());
+    ensure_icons();
 }
 
 } // namespace dma2ray::paths
