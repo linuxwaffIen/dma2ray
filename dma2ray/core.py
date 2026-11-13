@@ -391,7 +391,7 @@ class CoreManager:
         log_handle = paths.LOG_FILE.open("wb", buffering=0)
         try:
             proc = subprocess.Popen(
-                [str(core), "-d", str(paths.MIHOME_DIR), "-f", str(paths.CONFIG_FILE)],
+                [str(core), "-d", str(paths.MIHOMO_DIR), "-f", str(paths.CONFIG_FILE)],
                 stdin=subprocess.DEVNULL,
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
@@ -825,7 +825,7 @@ class CoreManager:
     def _validate(core: Path) -> None:
         try:
             result = subprocess.run(
-                [str(core), "-t", "-d", str(paths.MIHOME_DIR), "-f", str(paths.CONFIG_FILE)],
+                [str(core), "-t", "-d", str(paths.MIHOMO_DIR), "-f", str(paths.CONFIG_FILE)],
                 capture_output=True,
                 text=True,
                 timeout=25,
