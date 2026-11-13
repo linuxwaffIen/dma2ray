@@ -29,7 +29,7 @@ class BuildConfigTests(unittest.TestCase):
         self.assertFalse(config["allow-lan"])
         self.assertFalse(config["ipv6"])
         self.assertNotIn("tun", config)
-        self.assertEqual(config["global-client-fingerprint"], "chrome")
+        self.assertNotIn("global-client-fingerprint", config)
 
         proxy = config["proxies"][0]
         self.assertEqual(proxy["type"], "vless")
@@ -38,6 +38,7 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual(proxy["uuid"], UUID)
         self.assertTrue(proxy["tls"])
         self.assertEqual(proxy["servername"], "example.com")
+        self.assertEqual(proxy["client-fingerprint"], "chrome")
         self.assertEqual(
             config["proxy-groups"],
             [{"name": PROXY_GROUP, "type": "select", "proxies": [proxy["name"]]}],

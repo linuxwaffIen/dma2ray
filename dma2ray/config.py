@@ -80,8 +80,10 @@ def _tls_options(profile: VlessProfile, proxy: dict[str, Any]) -> None:
         proxy["skip-cert-verify"] = True
     if profile.alpn:
         proxy["alpn"] = list(profile.alpn)
-    if profile.fingerprint:
-        proxy["client-fingerprint"] = profile.fingerprint
+    # uTLS-отпечаток браузера: без него ClientHello Go-клиента легко
+    # детектируется DPI. Опция global-client-fingerprint удалена из mihomo,
+    # поэтому задаём отпечаток прямо в прокси.
+    proxy["client-fingerprint"] = profile.fingerprint or "chrome"
     if security == "reality":
         proxy["reality-opts"] = {
             "public-key": profile.public_key,
@@ -155,8 +157,7 @@ def to_mihomo_proxy(
             proxy["skip-cert-verify"] = True
         if profile.alpn:
             proxy["alpn"] = list(profile.alpn)
-        if profile.fingerprint:
-            proxy["client-fingerprint"] = profile.fingerprint
+        proxy["client-fingerprint"] = profile.fingerprint or "chrome"
         _transport_options(profile, proxy)
         return proxy
 
@@ -207,9 +208,6 @@ def build_config(
         "bind-address": "127.0.0.1",
         "allow-lan": False,
         "ipv6": bool(tun and (is_ipv6_supported() if enable_ipv6 is None else enable_ipv6)),
-        # uTLS-отпечаток браузера для всех TLS-исходящих соединений:
-        # без него ClientHello Go-клиента легко детектируется DPI.
-        "global-client-fingerprint": "chrome",
         "proxies": [proxy],
         "proxy-groups": [
             {"name": PROXY_GROUP, "type": "select", "proxies": [proxy["name"]]}
