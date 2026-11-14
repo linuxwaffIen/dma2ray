@@ -195,6 +195,7 @@ RULE_KIND_TOKENS = {
     "domain_suffix": "DOMAIN-SUFFIX",
     "domain_keyword": "DOMAIN-KEYWORD",
     "ip_cidr": "IP-CIDR",
+    "process": "PROCESS-NAME",
 }
 RULE_TARGET_TOKENS = {
     "proxy": PROXY_GROUP,
@@ -219,7 +220,7 @@ def normalize_rule(rule: dict[str, Any]) -> dict[str, str]:
         raise ValueError("Неизвестный тип правила")
     if target not in RULE_TARGET_TOKENS:
         raise ValueError("Неизвестное действие правила")
-    if kind != "ip_cidr":
+    if kind not in ("ip_cidr", "process"):
         value = value.lower().rstrip(".")
     if not value:
         raise ValueError("Укажите значение правила")
@@ -284,7 +285,8 @@ def build_config(
     server_ip = _server_ip(profile, address_override)
     # Пользовательские правила имеют наивысший приоритет: они проверяются
     # до защиты локальных сетей и до catch-all MATCH.
-    rules = rule_strings(user_rules) + _rules(server_ip)
+    normalized_rules = rule_strings(user_rules)
+    rules = normalized_rules + _rules(server_ip)
 
     config: dict[str, Any] = {
         "mode": "rule",
@@ -299,6 +301,11 @@ def build_config(
             {"name": PROXY_GROUP, "type": "select", "proxies": [proxy["name"]]}
         ],
         "rules": rules,
+        # Правила по приложениям требуют, чтобы mihomo искал процесс —
+        # источник соединения (актуально для TUN-режима).
+        **({"find-process-mode": "strict"} if any(
+            r.startswith("PROCESS-NAME,") for r in normalized_rules
+        ) else {}),
         # DNS включён всегда: домен сервера резолвим сами через DoH,
         # доверяя 1.1.1.1/8.8.8.8, а не системному (потенциально
         # подменённому) резолверу. Вместе с DoH добавлены обычные

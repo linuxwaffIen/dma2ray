@@ -43,12 +43,13 @@ MODES = ("proxy", "system", "vpn")
 
 # Пользовательские правила маршрутизации (routing_rules в настройках):
 # список словарей {"kind": ..., "value": ..., "target": ...}.
-RULE_KINDS = ("domain", "domain_suffix", "domain_keyword", "ip_cidr")
+RULE_KINDS = ("domain", "domain_suffix", "domain_keyword", "ip_cidr", "process")
 RULE_KIND_LABELS = {
     "domain": "Домен целиком",
     "domain_suffix": "Суффикс домена",
     "domain_keyword": "Ключевое слово в домене",
     "ip_cidr": "IP-адрес или сеть",
+    "process": "Приложение (имя процесса)",
 }
 RULE_TARGETS = ("proxy", "direct", "reject")
 RULE_TARGET_LABELS = {

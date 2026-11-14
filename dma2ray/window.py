@@ -1819,7 +1819,10 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         page = Adw.PreferencesPage()
         group = Adw.PreferencesGroup(
             title="Условие и действие",
-            description="Например: example.com, *.example.com или 10.0.0.0/8.",
+            description=(
+                "Например: example.com, 10.0.0.0/8 или firefox. "
+                "Правила по приложению работают в режиме VPN (TUN)."
+            ),
         )
         kind_row = Adw.ComboRow(
             title="Тип правила",

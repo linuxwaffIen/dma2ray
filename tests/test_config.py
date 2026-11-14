@@ -84,6 +84,25 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual(config["rules"][0], "DOMAIN-SUFFIX,x.com,PROXY")
         self.assertIn("IP-CIDR,144.31.224.191/32,DIRECT,no-resolve", config["rules"])
 
+    def test_process_rule(self) -> None:
+        rules = [
+            {"kind": "process", "value": "firefox", "target": "direct"},
+            {"kind": "process", "value": "Telegram", "target": "proxy"},
+        ]
+        config = build_config(make_profile(), tun=True, user_rules=rules)
+        rules_out = config["rules"]
+        self.assertEqual(rules_out[0], "PROCESS-NAME,firefox,DIRECT")
+        self.assertEqual(rules_out[1], "PROCESS-NAME,Telegram,PROXY")
+        # При наличии правил по приложениям включается поиск процесса.
+        self.assertEqual(config["find-process-mode"], "strict")
+
+    def test_no_find_process_mode_without_process_rules(self) -> None:
+        config = build_config(
+            make_profile(), tun=True,
+            user_rules=[{"kind": "domain_suffix", "value": "x.com", "target": "proxy"}],
+        )
+        self.assertNotIn("find-process-mode", config)
+
     def test_rules_direct_for_lan(self) -> None:
         config = build_config(make_profile(), tun=False)
         rules = config["rules"]
