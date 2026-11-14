@@ -401,6 +401,7 @@ class CoreManager:
                         http_port=int(settings["http_port"]),
                         log_level=str(settings["log_level"]),
                         address_override=address_override,
+                        user_rules=settings.get("routing_rules"),
                     )
                     self._write_config(config)
                     self._emit(

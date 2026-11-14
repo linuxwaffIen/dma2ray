@@ -44,6 +44,46 @@ class BuildConfigTests(unittest.TestCase):
             [{"name": PROXY_GROUP, "type": "select", "proxies": [proxy["name"]]}],
         )
 
+    def test_user_rules_are_applied(self) -> None:
+        rules = [
+            {"kind": "domain_suffix", "value": "Example.COM.", "target": "direct"},
+            {"kind": "domain", "value": "ads.example", "target": "reject"},
+            {"kind": "domain_keyword", "value": "telegram", "target": "proxy"},
+            {"kind": "ip_cidr", "value": "8.8.8.8", "target": "reject"},
+            {"kind": "ip_cidr", "value": "10.1.2.0/24", "target": "proxy"},
+        ]
+        config = build_config(make_profile(), tun=False, user_rules=rules)
+        rules_out = config["rules"]
+        self.assertEqual(rules_out[0], "DOMAIN-SUFFIX,example.com,DIRECT")
+        self.assertEqual(rules_out[1], "DOMAIN,ads.example,REJECT")
+        self.assertEqual(rules_out[2], "DOMAIN-KEYWORD,telegram,PROXY")
+        self.assertEqual(rules_out[3], "IP-CIDR,8.8.8.8/32,REJECT,no-resolve")
+        self.assertEqual(rules_out[4], "IP-CIDR,10.1.2.0/24,PROXY,no-resolve")
+        # Дефолтные правила идут после пользовательских, MATCH — последним.
+        self.assertEqual(rules_out[-1], f"MATCH,{PROXY_GROUP}")
+        self.assertIn("IP-CIDR,127.0.0.0/8,DIRECT,no-resolve", rules_out)
+
+    def test_invalid_rules_are_skipped(self) -> None:
+        rules = [
+            {"kind": "bogus", "value": "x", "target": "direct"},
+            {"kind": "domain", "value": "", "target": "direct"},
+            {"kind": "ip_cidr", "value": "999.1.1.1", "target": "direct"},
+            {"kind": "domain", "value": "a,b", "target": "direct"},
+            {"kind": "domain", "value": "a b", "target": "direct"},
+            {"kind": "domain_suffix", "value": "ok.com", "target": "direct"},
+        ]
+        config = build_config(make_profile(), tun=False, user_rules=rules)
+        rules_out = config["rules"]
+        self.assertEqual(rules_out[0], "DOMAIN-SUFFIX,ok.com,DIRECT")
+
+    def test_server_ip_rule_still_first_for_tunnel(self) -> None:
+        config = build_config(
+            make_profile(), tun=True, address_override="144.31.224.191",
+            user_rules=[{"kind": "domain_suffix", "value": "x.com", "target": "proxy"}],
+        )
+        self.assertEqual(config["rules"][0], "DOMAIN-SUFFIX,x.com,PROXY")
+        self.assertIn("IP-CIDR,144.31.224.191/32,DIRECT,no-resolve", config["rules"])
+
     def test_rules_direct_for_lan(self) -> None:
         config = build_config(make_profile(), tun=False)
         rules = config["rules"]

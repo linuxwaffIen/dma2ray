@@ -31,6 +31,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "color_scheme": "system",
     "auto_update_subs": False,
     "auto_update_interval": 6,
+    "routing_rules": [],
 }
 
 LOG_LEVELS = ("debug", "info", "warning", "error")
@@ -39,6 +40,22 @@ KERNEL_MODES = ("auto",)
 
 # Режимы подключения: локальный прокси, системный прокси ОС, TUN-ВПН.
 MODES = ("proxy", "system", "vpn")
+
+# Пользовательские правила маршрутизации (routing_rules в настройках):
+# список словарей {"kind": ..., "value": ..., "target": ...}.
+RULE_KINDS = ("domain", "domain_suffix", "domain_keyword", "ip_cidr")
+RULE_KIND_LABELS = {
+    "domain": "Домен целиком",
+    "domain_suffix": "Суффикс домена",
+    "domain_keyword": "Ключевое слово в домене",
+    "ip_cidr": "IP-адрес или сеть",
+}
+RULE_TARGETS = ("proxy", "direct", "reject")
+RULE_TARGET_LABELS = {
+    "proxy": "Через прокси",
+    "direct": "Напрямую, мимо прокси",
+    "reject": "Блокировать",
+}
 
 
 def new_id() -> str:

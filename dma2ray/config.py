@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import socket
 from pathlib import Path
 from typing import Any
@@ -188,6 +189,74 @@ def _rules(server_ip: str | None = None) -> list[str]:
     return rules
 
 
+# Пользовательские правила маршрутизации.
+RULE_KIND_TOKENS = {
+    "domain": "DOMAIN",
+    "domain_suffix": "DOMAIN-SUFFIX",
+    "domain_keyword": "DOMAIN-KEYWORD",
+    "ip_cidr": "IP-CIDR",
+}
+RULE_TARGET_TOKENS = {
+    "proxy": PROXY_GROUP,
+    "direct": "DIRECT",
+    "reject": "REJECT",
+}
+
+# Домены: буквы/цифры/дефис/точки, включая IDN; без пробелов и запятых.
+_DOMAIN_RE = re.compile(r"^[^\s,]+$")
+_SAFE_VALUE_RE = re.compile(r"^[^\s,]+$")
+
+
+def normalize_rule(rule: dict[str, Any]) -> dict[str, str]:
+    """Проверить и нормализовать одно пользовательское правило.
+
+    Бросает ValueError с человекочитаемым сообщением на некорректных данных.
+    """
+    kind = str(rule.get("kind", "")).strip()
+    target = str(rule.get("target", "")).strip()
+    value = str(rule.get("value", "")).strip()
+    if kind not in RULE_KIND_TOKENS:
+        raise ValueError("Неизвестный тип правила")
+    if target not in RULE_TARGET_TOKENS:
+        raise ValueError("Неизвестное действие правила")
+    if kind != "ip_cidr":
+        value = value.lower().rstrip(".")
+    if not value:
+        raise ValueError("Укажите значение правила")
+    if not _SAFE_VALUE_RE.fullmatch(value):
+        raise ValueError("Значение не должно содержать пробелов и запятых")
+    if kind == "ip_cidr":
+        try:
+            ipaddress.ip_network(
+                value if "/" in value else f"{value}/32", strict=False
+            )
+        except ValueError as exc:
+            raise ValueError("Некорректный IP-адрес или сеть") from exc
+    elif kind == "domain" and not _DOMAIN_RE.fullmatch(value):
+        raise ValueError("Некорректный домен")
+    return {"kind": kind, "target": target, "value": value}
+
+
+def rule_strings(rules: list[dict[str, Any]] | None) -> list[str]:
+    """Список пользовательских правил в синтаксисе mihomo. Неверные пропускаются."""
+    result: list[str] = []
+    for rule in rules or []:
+        try:
+            normalized = normalize_rule(rule)
+        except ValueError:
+            continue
+        kind_token = RULE_KIND_TOKENS[normalized["kind"]]
+        target = RULE_TARGET_TOKENS[normalized["target"]]
+        value = normalized["value"]
+        if kind_token == "IP-CIDR":
+            if "/" not in value:
+                value = f"{value}/32"
+            result.append(f"{kind_token},{value},{target},no-resolve")
+        else:
+            result.append(f"{kind_token},{value},{target}")
+    return result
+
+
 def _server_ip(profile: VlessProfile | HysteriaProfile, address_override: str | None) -> str | None:
     for candidate in (address_override, profile.address):
         if candidate and is_ip(candidate):
@@ -204,6 +273,7 @@ def build_config(
     log_level: str = "warning",
     address_override: str | None = None,
     enable_ipv6: bool | None = None,
+    user_rules: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if not 1 <= socks_port <= 65535 or not 1 <= http_port <= 65535:
         raise ValueError("Порты должны быть в диапазоне 1..65535")
@@ -212,6 +282,9 @@ def build_config(
 
     proxy = to_mihomo_proxy(profile, address_override)
     server_ip = _server_ip(profile, address_override)
+    # Пользовательские правила имеют наивысший приоритет: они проверяются
+    # до защиты локальных сетей и до catch-all MATCH.
+    rules = rule_strings(user_rules) + _rules(server_ip)
 
     config: dict[str, Any] = {
         "mode": "rule",
@@ -225,7 +298,7 @@ def build_config(
         "proxy-groups": [
             {"name": PROXY_GROUP, "type": "select", "proxies": [proxy["name"]]}
         ],
-        "rules": _rules(server_ip),
+        "rules": rules,
         # DNS включён всегда: домен сервера резолвим сами через DoH,
         # доверяя 1.1.1.1/8.8.8.8, а не системному (потенциально
         # подменённому) резолверу. Вместе с DoH добавлены обычные

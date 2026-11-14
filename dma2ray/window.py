@@ -17,7 +17,16 @@ from .flags import flag_for
 from .installer import SUPPORTED_ARCHS, current_arch, install_core
 from .ping import PING_TYPE_LABELS, PING_TYPES, ping_endpoint
 from .speedtest import SpeedResult, speed_test
-from .state import LOG_LEVELS, MODES, Profile, Store
+from .state import (
+    LOG_LEVELS,
+    MODES,
+    Profile,
+    RULE_KIND_LABELS,
+    RULE_KINDS,
+    RULE_TARGET_LABELS,
+    RULE_TARGETS,
+    Store,
+)
 from .subscriptions import FetchResult, fetch_and_parse
 from .sysproxy import SysProxyError
 from .tray import TrayController
@@ -548,6 +557,23 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         log_row.connect("notify::selected", self._settings_log_level)
         connection.add(log_row)
         page.add(connection)
+
+        rules_group = Adw.PreferencesGroup(
+            title="Правила маршрутизации",
+            description=(
+                "Свои правила проверяются раньше правил по умолчанию. "
+                "Изменения применяются при следующем подключении."
+            ),
+        )
+        add_btn = Gtk.Button.new_from_icon_name("list-add-symbolic")
+        add_btn.add_css_class("flat")
+        add_btn.set_tooltip_text("Добавить правило")
+        add_btn.connect("clicked", lambda *_: self._show_rule_dialog())
+        rules_group.set_header_suffix(add_btn)
+        self._rules_group = rules_group
+        self._refresh_rules_group()
+        page.add(rules_group)
+
         appearance = Adw.PreferencesGroup(title="Оформление")
         scheme_row = Adw.ComboRow(
             title="Тема",
@@ -1711,6 +1737,133 @@ class MainWindow(AccentMixin, Adw.ApplicationWindow):
         index = int(row.get_selected())
         if 0 <= index < len(LOG_LEVELS):
             self.store.set_setting("log_level", LOG_LEVELS[index])
+
+    # ------------------------------------------------------- routing rules
+    def _rules_settings(self) -> list[dict]:
+        rules = self.store.settings.get("routing_rules") or []
+        return list(rules) if isinstance(rules, list) else []
+
+    def _refresh_rules_group(self) -> None:
+        group = getattr(self, "_rules_group", None)
+        if group is None:
+            return
+        child = group.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            group.remove(child)
+            child = nxt
+        rules = self._rules_settings()
+        if not rules:
+            empty = Adw.ActionRow(
+                title="Правил нет",
+                subtitle=(
+                    "Весь трафик пойдёт через прокси, кроме локальных сетей. "
+                    "Нажмите «+», чтобы добавить правило."
+                ),
+            )
+            group.add(empty)
+            return
+        for index, rule in enumerate(rules):
+            value = str(rule.get("value", "?"))
+            kind = RULE_KIND_LABELS.get(str(rule.get("kind")), str(rule.get("kind")))
+            target = RULE_TARGET_LABELS.get(
+                str(rule.get("target")), str(rule.get("target"))
+            )
+            row = Adw.ActionRow(title=value or "?")
+            row.set_subtitle(f"{kind} · {target}")
+            delete = Gtk.Button.new_from_icon_name("user-trash-symbolic")
+            delete.add_css_class("flat")
+            delete.set_valign(Gtk.Align.CENTER)
+            delete.set_tooltip_text("Удалить правило")
+            delete.connect("clicked", lambda _b, i=index: self._delete_rule(i))
+            row.add_suffix(delete)
+            group.add(row)
+
+    def _delete_rule(self, index: int) -> None:
+        rules = self._rules_settings()
+        if not 0 <= index < len(rules):
+            return
+        rules.pop(index)
+        self.store.set_setting("routing_rules", rules)
+        self._refresh_rules_group()
+        self._toast("Правило удалено — применится при следующем подключении")
+
+    def _add_rule(self, rule: dict[str, str]) -> None:
+        from .config import normalize_rule
+
+        try:
+            normalized = normalize_rule(rule)
+        except ValueError as exc:
+            self._toast(str(exc))
+            return
+        rules = self._rules_settings()
+        rules.append(normalized)
+        self.store.set_setting("routing_rules", rules)
+        self._refresh_rules_group()
+        self._toast("Правило добавлено — применится при следующем подключении")
+
+    def _show_rule_dialog(self) -> None:
+        dialog = Adw.Dialog()
+        dialog.set_title("Новое правило")
+        dialog.set_presentation_mode(Adw.DialogPresentationMode.BOTTOM_SHEET)
+        _apply_dialog_size(dialog, 460, 420)
+
+        toolbar = Adw.ToolbarView()
+        header = Adw.HeaderBar()
+        header.set_title_widget(Adw.WindowTitle(title="Новое правило"))
+        apply_btn = Gtk.Button(label="Добавить")
+        apply_btn.add_css_class("suggested-action")
+        header.pack_end(apply_btn)
+        toolbar.add_top_bar(header)
+
+        page = Adw.PreferencesPage()
+        group = Adw.PreferencesGroup(
+            title="Условие и действие",
+            description="Например: example.com, *.example.com или 10.0.0.0/8.",
+        )
+        kind_row = Adw.ComboRow(
+            title="Тип правила",
+            subtitle="Что считать совпадением",
+            model=Gtk.StringList.new([RULE_KIND_LABELS[k] for k in RULE_KINDS]),
+        )
+        kind_row.set_selected(1)  # суффикс домена — самый частый сценарий
+        group.add(kind_row)
+        target_row = Adw.ComboRow(
+            title="Действие",
+            subtitle="Куда направить совпавший трафик",
+            model=Gtk.StringList.new([RULE_TARGET_LABELS[t] for t in RULE_TARGETS]),
+        )
+        target_row.set_selected(0)
+        group.add(target_row)
+        value_row = Adw.EntryRow(title="Значение")
+        group.add(value_row)
+        page.add(group)
+
+        content = Adw.ToolbarView()
+        content.add_top_bar(Adw.HeaderBar())
+        content.set_content(page)
+        # В bottom-sheet удобно показать только страницу без двойного хедера:
+        toolbar.set_content(content)
+        dialog.set_child(toolbar)
+
+        def on_apply(*_args) -> None:
+            value = value_row.get_text().strip()
+            if not value:
+                self._toast("Укажите значение правила")
+                value_row.grab_focus()
+                return
+            self._add_rule(
+                {
+                    "kind": RULE_KINDS[int(kind_row.get_selected())],
+                    "target": RULE_TARGETS[int(target_row.get_selected())],
+                    "value": value,
+                }
+            )
+            dialog.close()
+
+        apply_btn.connect("clicked", on_apply)
+        value_row.connect("entry-activated", on_apply)
+        dialog.present(self)
 
     def _settings_autostart(self, row: Adw.SwitchRow, _param=None) -> None:
         if self._settings_reverting:
